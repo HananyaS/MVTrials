@@ -1,0 +1,16 @@
+dataset,xgb_partial_features
+Ecoli,0.666 +- 0.119
+Accent,0.665 +- 0.098
+Iris,0.742 +- 0.277
+Spam,0.959 +- 0.012
+Iris,0.742 +- 0.277
+Banknote,0.794 +- 0.212
+Accent,0.665 +- 0.098
+Wine,0.579 +- 0.039
+Credit,0.799 +- 0.009
+Wifi,0.88 +- 0.15
+Ecoli,0.666 +- 0.119
+Sonar,0.828 +- 0.021
+Breast,0.959 +- 0.012
+HTRU2,0.968 +- 0.021
+Parkinson,0.937 +- 0.026

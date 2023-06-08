@@ -7,7 +7,7 @@ from pkg_resources import resource_filename
 from sklearn.model_selection import train_test_split
 
 
-def load_data(dataset_name: str):
+def load_data(dataset_name: str, full: bool = True):
     valid_tab_datasets = os.listdir(resource_filename(__name__, "Tabular"))
     valid_graph_datasets = os.listdir(resource_filename(__name__, "Graph"))
 
@@ -16,19 +16,31 @@ def load_data(dataset_name: str):
                                                                       f" {valid_tab_datasets + valid_graph_datasets}"
 
     if dataset_name in valid_tab_datasets:
-        return load_tabular_data(dataset_name)
+        return load_tabular_data(dataset_name, full=full)
 
     return load_graph_data(dataset_name)
 
 
-def load_tabular_data(dataset_name: str):
-    train = pd.read_csv(resource_filename(__name__, f"Tabular/{dataset_name}/processed/train.csv"), index_col=0)
-    test = pd.read_csv(resource_filename(__name__, f"Tabular/{dataset_name}/processed/test.csv"), index_col=0)
-    val = pd.read_csv(resource_filename(__name__, f"Tabular/{dataset_name}/processed/val.csv"), index_col=0)
+def load_tabular_data(dataset_name: str, full: bool = False):
+    if full:
+        print("Loading Full dataset...")
+        train = pd.read_csv(resource_filename(__name__, f"Tabular/{dataset_name}/processed/full/train.csv"),
+                            index_col=0)
+        test = pd.read_csv(resource_filename(__name__, f"Tabular/{dataset_name}/processed/full/test.csv"), index_col=0)
+        val = pd.read_csv(resource_filename(__name__, f"Tabular/{dataset_name}/processed/full/val.csv"), index_col=0)
 
-    with open(resource_filename(__name__, f"Tabular/{dataset_name}/processed/config.json"), "r") as f:
-        conf = json.load(f)
-        target_col = conf["target_col"]
+        with open(resource_filename(__name__, f"Tabular/{dataset_name}/processed/full/config.json"), "r") as f:
+            conf = json.load(f)
+            target_col = conf["target_col"]
+
+    else:
+        train = pd.read_csv(resource_filename(__name__, f"Tabular/{dataset_name}/processed/train.csv"), index_col=0)
+        test = pd.read_csv(resource_filename(__name__, f"Tabular/{dataset_name}/processed/test.csv"), index_col=0)
+        val = pd.read_csv(resource_filename(__name__, f"Tabular/{dataset_name}/processed/val.csv"), index_col=0)
+
+        with open(resource_filename(__name__, f"Tabular/{dataset_name}/processed/config.json"), "r") as f:
+            conf = json.load(f)
+            target_col = conf["target_col"]
 
     return train, val, test, target_col, "tabular"
 
