@@ -697,8 +697,9 @@ def check_alpha_beta():
 
     f.close()
 
-    
+
 if __name__ == "__main__":
     # main()
     # preprocess_dfcn()
-    run_dfcn_data(save_res=False)
+    # run_dfcn_data(save_res=False)
+    check_alpha_beta()
