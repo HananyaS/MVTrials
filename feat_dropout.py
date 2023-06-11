@@ -150,7 +150,7 @@ class Model(torch.nn.Module):
                         y_pred_f, reconstruction_f = self(X_f, drop=False)
 
                         diffs_partial[f] = diff_criterion(y_pred_f, y_pred_full)
-                        reconstruction_partial[f] = l2_criterion(reconstruction_f[i], X[i])
+                        reconstruction_partial[f] = l2_criterion(reconstruction_f[f], X[f])
 
                         # if f == 0:
                         #     loss_partial = mse_criterion(y_pred_f, y_pred_full)
@@ -199,7 +199,7 @@ class Model(torch.nn.Module):
                             y_pred_f, reconstruction_f = self(X_f, drop=False)
 
                             diffs_partial[f] = diff_criterion(y_pred_f, y_pred_full)
-                            reconstruction_partial[f] = l2_criterion(reconstruction_f[i], X[i])
+                            reconstruction_partial[f] = l2_criterion(reconstruction_f[f], X[f])
 
                             # if f == 0:
                             #     loss_partial = mse_criterion(y_pred_f, y_pred_full)
