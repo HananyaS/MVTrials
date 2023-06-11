@@ -690,11 +690,20 @@ def check_alpha_beta():
 
         model.fit(train_loader, val_loader, n_epochs=300, verbose=False, dataset_name=dataset, alpha=alpha, beta=beta)
 
-        # calc score on valiation set
-        score = model.score(val_ds.X, val_ds.y, metric="auc")
-        print(f"Results for {dataset} with alpha={alpha} and beta={beta}:\t{round(score, 3)}")
+        val_X, val_y = val_ds.X, val_ds.y
+        val_scores = []
 
-        all_res[(dataset, alpha, beta)] = score
+        for j in range(val_X.shape[1]):
+            new_val_X = test_X.clone()
+            new_val_X[:, j] = 0
+
+            score = model.score(new_val_X, val_y)
+            val_scores.append(score)
+
+        print(
+            f"Results for {dataset} with alpha={alpha} and beta={beta}:\t{round(np.mean(val_scores), 3)} +- {round(np.std(val_scores), 3)}")
+
+        all_res[(dataset, alpha, beta)] = f"{round(np.mean(val_scores), 3)} +- {round(np.std(val_scores), 3)}"
         f.write(f"{dataset},{alpha},{beta},{score}\n")
 
     f.close()
