@@ -77,9 +77,11 @@ class Model(torch.nn.Module):
 
         # x = x.float()
 
+        """
         if self.training and drop:
             x = self.rand_bernoulli(x, self.probs)
             # x[:, mask.flatten()] = 0
+        """
 
         x = self.fc1(x)
         x = self.relu(x)
@@ -689,8 +691,8 @@ def check_alpha_beta():
         model.fit(train_loader, val_loader, n_epochs=300, verbose=False, dataset_name=dataset, alpha=alpha, beta=beta)
 
         # calc score on valiation set
-        score = model.score(val_X, val_y, metric="auc")
-        print(f"Results for {dataset} with alpha={alpha} and beta={beta}: {round(score, 3)}")
+        score = model.score(val_ds.X, val_ds.y, metric="auc")
+        print(f"Results for {dataset} with alpha={alpha} and beta={beta}:\t{round(score, 3)}")
 
         all_res[(dataset, alpha, beta)] = score
         f.write(f"{dataset},{alpha},{beta},{score}\n")
