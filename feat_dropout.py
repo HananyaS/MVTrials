@@ -21,6 +21,8 @@ from copy import deepcopy
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score
 
+from itertools import product
+
 warnings.filterwarnings("ignore")
 
 PROJECT_DIR = "."
@@ -522,7 +524,7 @@ def preprocess_dfcn(n_feats2remain):
     return train_X, train_y, test_X, test_y
 
 
-def run_dfcn_data(save_res = True):
+def run_dfcn_data(save_res=True):
     all_scores = {}
     for i in range(1, 29):
         n_scores = []
@@ -625,6 +627,77 @@ def main():
         run_model_different_reg(train_loader, val_loader, test_loader, 0, dataset_name=dataset)
 
 
+def check_alpha_beta():
+    datasets = os.listdir("data/Tabular")
+    datasets.remove("Sensorless")
+
+    # datasets = ["Ecoli", "Accent", "Iris"]
+
+    alphas = betas = [0, 0.5, 1, 5, 10]
+    all_res = {}
+
+    f = open("alpha_beta_results.csv", "w")
+    f.write("dataset,alpha,beta,score\n")
+
+    for dataset, alpha, beta in product(datasets, alphas, betas):
+        data = load_data(dataset, args.full)
+
+        if data[-1] == "tabular":
+            train, val, test, target_col = data[:-1]
+            edges = None
+
+        else:
+            train, val, test, edges, target_col = data[:-1]
+
+        train_X, train_y = split_X_y(train, target_col)
+        val_X, val_y = split_X_y(val, target_col)
+        test_X, test_y = split_X_y(test, target_col)
+
+        mean = train_X.mean()
+        std = train_X.std()
+
+        train_X = (train_X - mean) / std
+        val_X = (val_X - mean) / std
+        test_X = (test_X - mean) / std
+
+        train_X = train_X.fillna(0)
+        val_X = val_X.fillna(0)
+        test_X = test_X.fillna(0)
+
+        train_ds = Dataset(train_X, train_y)
+        val_ds = Dataset(val_X, val_y)
+        test_ds = Dataset(test_X, test_y)
+
+        train_loader = DataLoader(
+            train_ds, batch_size=32, shuffle=True
+        )
+
+        val_loader = DataLoader(
+            val_ds, batch_size=32, shuffle=True
+        )
+
+        # test_loader = DataLoader(
+        #     test_ds, batch_size=32, shuffle=True
+        # )
+
+        # run_model(train_loader, val_loader, test_loader, 0, dataset_name=dataset)
+        # run_model_different_reg(train_loader, val_loader, test_loader, 0, dataset_name=dataset)
+        model = Model(train_loader.dataset.X.shape[1], int(train_loader.dataset.X.shape[1] * .75),
+                      len(train_loader.dataset.y.unique()), p=0,
+                      learn_p=False, use_reg=True)
+
+        model.fit(train_loader, val_loader, n_epochs=300, verbose=False, dataset_name=dataset, alpha=alpha, beta=beta)
+
+        # calc score on valiation set
+        score = model.score(val_X, val_y, metric="auc")
+        print(f"Results for {dataset} with alpha={alpha} and beta={beta}: {round(score, 3)}")
+
+        all_res[(dataset, alpha, beta)] = score
+        f.write(f"{dataset},{alpha},{beta},{score}\n")
+
+    f.close()
+
+    
 if __name__ == "__main__":
     # main()
     # preprocess_dfcn()
