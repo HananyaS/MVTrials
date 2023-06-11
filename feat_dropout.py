@@ -3,6 +3,7 @@ import argparse
 import warnings
 
 import numpy as np
+import pandas as pd
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -16,6 +17,9 @@ from tqdm import tqdm
 from xgboost import XGBClassifier
 
 from copy import deepcopy
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_auc_score
 
 warnings.filterwarnings("ignore")
 
@@ -50,12 +54,14 @@ class Model(torch.nn.Module):
 
         self.fc1 = torch.nn.Linear(input_dim, hidden_dim)
         self.fc2 = torch.nn.Linear(hidden_dim, output_dim)
+        self.decoder = torch.nn.Linear(hidden_dim, input_dim)
 
         self.relu = torch.nn.ReLU()
         self.softmax = torch.nn.Softmax(dim=1)
         self.probs = nn.Parameter(torch.ones(1, input_dim) * p)
         self.learn_p = learn_p
         self.use_reg = use_reg
+        self.double()
 
     @staticmethod
     def rand_bernoulli(x, p, gamma=100):
@@ -67,28 +73,38 @@ class Model(torch.nn.Module):
         # rand = torch.rand_like(self.probs)
         # mask = rand < self.probs
 
-        x = x.float()
+        # x = x.float()
+
         if self.training and drop:
             x = self.rand_bernoulli(x, self.probs)
             # x[:, mask.flatten()] = 0
 
         x = self.fc1(x)
         x = self.relu(x)
-        x = self.fc2(x)
+        reconstruction = self.decoder(x)
+        output = self.fc2(x)
+        output = self.softmax(output)
 
-        # return x
-        return self.softmax(x)
+        return output, reconstruction
 
     def predict(self, x):
         with torch.no_grad():
-            return self.forward(x)
+            return self(x)[0]
 
-    def score(self, x, y):
-        with torch.no_grad():
-            return (self.predict(x).argmax(dim=1) == y).float().mean().item()
+    def score(self, x, y, metric="accuracy"):
+        if metric == "accuracy":
+            with torch.no_grad():
+                return (self.predict(x).argmax(dim=1) == y).float().mean().item()
+
+        elif metric.lower() == "auc":
+            with torch.no_grad():
+                return roc_auc_score(y, self.predict(x)[:, 1].numpy())
+
+        else:
+            raise NotImplementedError
 
     def fit(self, train_loader, val_loader, dataset_name, lr=1e-2, n_epochs=300, verbose=True, early_stopping=30,
-            reg_type="l2"):
+            reg_type="max", alpha: float = 1, beta: float = 1):
         optimizer = Adam(self.parameters(), lr=lr)
         min_val_loss = np.inf
         best_model = None
@@ -98,6 +114,7 @@ class Model(torch.nn.Module):
 
         bce_criterion = nn.CrossEntropyLoss(reduction="sum")
         diff_criterion = nn.MSELoss(reduction="sum") if reg_type == "l2" else nn.L1Loss(reduction="sum")
+        l2_criterion = nn.MSELoss(reduction="sum")
 
         train_acc, val_acc = [], []
         full_loss_train, partial_loss_train = [], []
@@ -113,21 +130,23 @@ class Model(torch.nn.Module):
                 # cols2drop = torch.randperm(X.shape[1])[:int(X.shape[1] * self.probs[0, 0].item())]
                 # X[:, cols2drop] = 0
 
-                # y_pred_partial = self.forward(X, drop=True)
+                # y_pred_partial = self(X, drop=True)
                 # loss_partial = criterion(y_pred_partial, y)
 
-                y_pred_full = self.forward(X, drop=False)
+                y_pred_full, _ = self(X, drop=False)
                 loss_full = bce_criterion(y_pred_full, y)
 
                 if self.use_reg:
                     diffs_partial = torch.zeros(X.shape[1])
+                    reconstruction_partial = torch.zeros(X.shape[1])
 
                     for f in range(X.shape[1]):
                         X_f = X.clone()
                         X_f[:, f] = 0
-                        y_pred_f = self.forward(X_f, drop=False)
+                        y_pred_f, reconstruction_f = self(X_f, drop=False)
 
                         diffs_partial[f] = diff_criterion(y_pred_f, y_pred_full)
+                        reconstruction_partial[f] = l2_criterion(reconstruction_f[i], X[i])
 
                         # if f == 0:
                         #     loss_partial = mse_criterion(y_pred_f, y_pred_full)
@@ -140,9 +159,10 @@ class Model(torch.nn.Module):
                     else:
                         loss_partial = diffs_partial.mean()
 
-                    loss = loss_full + loss_partial
+                    loss_rec = reconstruction_partial.mean()
 
-                    epoch_loss_partial_train.append(loss_partial.item())
+                    loss = loss_full.float() + alpha * loss_partial.float() + beta * loss_rec.float()
+                    epoch_loss_partial_train.append(alpha * loss_partial.item() + beta * loss_rec.item())
 
                 else:
                     loss = loss_full
@@ -162,18 +182,20 @@ class Model(torch.nn.Module):
 
             with torch.no_grad():
                 for i, (X, y) in enumerate(val_loader):
-                    y_pred_full = self.forward(X, drop=False)
+                    y_pred_full, _ = self(X, drop=False)
                     loss_full = bce_criterion(y_pred_full, y)
 
                     if self.use_reg:
                         diffs_partial = torch.zeros(X.shape[1])
+                        reconstruction_partial = torch.zeros(X.shape[1])
 
                         for f in range(X.shape[1]):
                             X_f = X.clone()
                             X_f[:, f] = 0
-                            y_pred_f = self.forward(X_f, drop=False)
+                            y_pred_f, reconstruction_f = self(X_f, drop=False)
 
                             diffs_partial[f] = diff_criterion(y_pred_f, y_pred_full)
+                            reconstruction_partial[f] = l2_criterion(reconstruction_f[i], X[i])
 
                             # if f == 0:
                             #     loss_partial = mse_criterion(y_pred_f, y_pred_full)
@@ -186,7 +208,9 @@ class Model(torch.nn.Module):
                         else:
                             loss_partial = diffs_partial.mean()
 
-                        epoch_loss_partial_val.append(loss_partial.item())
+                        loss_rec = reconstruction_partial.mean()
+
+                        epoch_loss_partial_val.append(alpha * loss_partial.item() + beta * loss_rec.item())
 
                     epoch_loss_full_val.append(loss_full.item())
 
@@ -247,20 +271,20 @@ class Model(torch.nn.Module):
             # plt.show()
 
 
-def run_model(train_loader, test_loader, p, dataset_name):
+def run_model(train_loader, val_loader, test_loader, p, dataset_name):
     print("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     print("Dataset:\t", dataset_name)
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
     model_with_reg = Model(train_loader.dataset.X.shape[1], int(train_loader.dataset.X.shape[1] * .75),
-                           train_y.nunique(), p=p,
+                           len(train_loader.dataset.y.unique()), p=p,
                            learn_p=False, use_reg=True)
-    model_with_reg.fit(train_loader, test_loader, n_epochs=300, verbose=False, dataset_name=dataset_name)
+    model_with_reg.fit(train_loader, val_loader, n_epochs=300, verbose=False, dataset_name=dataset_name)
 
     model_without_reg = Model(train_loader.dataset.X.shape[1], int(train_loader.dataset.X.shape[1] * .75),
-                              train_y.nunique(), p=p,
+                              len(train_loader.dataset.y.unique()), p=p,
                               learn_p=False, use_reg=False)
-    model_without_reg.fit(train_loader, test_loader, n_epochs=300, verbose=False, dataset_name=dataset_name)
+    model_without_reg.fit(train_loader, val_loader, n_epochs=300, verbose=False, dataset_name=dataset_name)
 
     xgb = XGBClassifier()
     xgb.fit(train_loader.dataset.X, train_loader.dataset.y)
@@ -344,26 +368,26 @@ def run_model(train_loader, test_loader, p, dataset_name):
     return to_save
 
 
-def run_model_different_reg(train_loader, test_loader, p, dataset_name):
+def run_model_different_reg(train_loader, val_loader, test_loader, p, dataset_name):
     print("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     print("Dataset:\t", dataset_name)
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
     model_1l = Model(train_loader.dataset.X.shape[1], int(train_loader.dataset.X.shape[1] * .75),
-                           train_y.nunique(), p=p,
-                           learn_p=False, use_reg=True)
-    model_1l.fit(train_loader, test_loader, n_epochs=300, verbose=False, dataset_name=dataset_name, reg_type="l1")
+                     len(train_loader.dataset.y.unique()), p=p,
+                     learn_p=False, use_reg=True)
+    model_1l.fit(train_loader, val_loader, n_epochs=300, verbose=False, dataset_name=dataset_name, reg_type="l1")
 
     model_max = Model(train_loader.dataset.X.shape[1], int(train_loader.dataset.X.shape[1] * .75),
-                              train_y.nunique(), p=p,
-                              learn_p=False, use_reg=False)
-    model_max.fit(train_loader, test_loader, n_epochs=300, verbose=False, dataset_name=dataset_name, reg_type="max")
+                      len(train_loader.dataset.y.unique()), p=p,
+                      learn_p=False, use_reg=False)
+    model_max.fit(train_loader, val_loader, n_epochs=300, verbose=False, dataset_name=dataset_name, reg_type="max")
 
     model_l2 = Model(train_loader.dataset.X.shape[1], int(train_loader.dataset.X.shape[1] * .75),
-                                train_y.nunique(), p=p,
-                                learn_p=False, use_reg=True)
+                     len(train_loader.dataset.y.unique()), p=p,
+                     learn_p=False, use_reg=True)
 
-    model_l2.fit(train_loader, test_loader, n_epochs=300, verbose=False, dataset_name=dataset_name, reg_type="l2")
+    model_l2.fit(train_loader, val_loader, n_epochs=300, verbose=False, dataset_name=dataset_name, reg_type="l2")
 
     test_X = test_loader.dataset.X
     test_y = test_loader.dataset.y
@@ -435,7 +459,122 @@ def run_model_different_reg(train_loader, test_loader, p, dataset_name):
     return to_save
 
 
-if __name__ == "__main__":
+def preprocess_dfcn(n_feats2remain):
+    train = pd.read_csv("dfcn_data/raw/training.csv", index_col=0)
+    test = pd.read_csv("dfcn_data/raw/test.csv", index_col=0)
+
+    train.drop(columns=["our_cxr_score"], inplace=True)
+    test.drop(columns=["our_cxr_score"], inplace=True)
+
+    test.rename(columns={"Gender": "Sex"}, inplace=True)
+
+    target_col = "PCR Result"
+
+    # replace the order of the first and second columns in the test set
+
+    tmp = test.iloc[:, 0].copy()
+    test.iloc[:, 0] = test.iloc[:, 1]
+    test.iloc[:, 1] = tmp
+
+    col_1 = test.columns[0]
+    test.rename(columns={test.columns[0]: test.columns[1], test.columns[1]: col_1}, inplace=True)
+
+    train_idx = range(train.shape[0])
+    test_idx = range(train.shape[0], train.shape[0] + test.shape[0])
+
+    all_data = pd.concat([train, test], axis=0)
+
+    # check which features are categorical or binary
+
+    feats2onehot = list(
+        filter(lambda x: (len(all_data[x].unique()) == 2 or all_data[x].dtype == "O") and x != target_col,
+               all_data.columns))
+
+    feats2normalize = list(filter(lambda x: x not in feats2onehot and x != target_col, all_data.columns))
+
+    train = all_data.iloc[train_idx, :]
+    test = all_data.iloc[test_idx, :]
+
+    train_mean, train_std = train[feats2normalize].mean(), train[feats2normalize].std()
+
+    train[feats2normalize] = (train[feats2normalize] - train_mean) / train_std
+    test[feats2normalize] = (test[feats2normalize] - train_mean) / train_std
+
+    train = pd.get_dummies(train, columns=feats2onehot)
+    test = pd.get_dummies(test, columns=feats2onehot)
+
+    train.fillna(0, inplace=True)
+    test.fillna(0, inplace=True)
+
+    train_X = train.drop(columns=[target_col])
+    train_y = train[target_col]
+
+    test_X = test.drop(columns=[target_col])
+    test_y = test[target_col]
+
+    if n_feats2remain > 0:
+        # randomly sample features to remove
+        feats2remove = set(list(train_X.columns)) - set(
+            np.random.choice(list(set(list(train.columns)) - set(target_col)), n_feats2remain, replace=False))
+
+        test_X.loc[:, feats2remove] = 0
+
+    return train_X, train_y, test_X, test_y
+
+
+def run_dfcn_data(save_res = True):
+    all_scores = {}
+    for i in range(1, 29):
+        n_scores = []
+
+        for j in range(3):
+            train_X, train_y, test_X, test_y = preprocess_dfcn(n_feats2remain=i)
+
+            # split to train val
+
+            train_X, val_X, train_y, val_y = train_test_split(train_X, train_y, test_size=0.2, random_state=42)
+
+            train_ds = Dataset(train_X, train_y)
+            val_ds = Dataset(val_X, val_y)
+            test_ds = Dataset(test_X, test_y)
+
+            train_loader = DataLoader(
+                train_ds, batch_size=32, shuffle=True
+            )
+
+            val_loader = DataLoader(
+                val_ds, batch_size=32, shuffle=True
+            )
+
+            # test_loader = DataLoader(
+            #     test_ds, batch_size=32, shuffle=True
+            # )
+
+            # run_model(train_loader, val_loader, test_loader, 0, "dfcn_data")
+
+            model_with_reg = Model(train_loader.dataset.X.shape[1], int(train_loader.dataset.X.shape[1] * .75),
+                                   len(train_loader.dataset.y.unique()), p=0,
+                                   learn_p=False, use_reg=True)
+            model_with_reg.fit(train_loader, val_loader, n_epochs=300, verbose=False, dataset_name="dfcn_data", beta=10)
+
+            # calc score like in the paper
+
+            test_X, test_y = test_ds.X, test_ds.y
+            score = model_with_reg.score(test_X, test_y, metric="auc")
+            n_scores.append(score)
+
+        all_scores[i] = (np.mean(n_scores), np.std(n_scores))
+        print(f"Results for {i} features remaining: {round(all_scores[i][0], 3)} +- {round(all_scores[i][1], 3)}")
+
+    if save_res:
+        with open("dfcn_results.csv", "w") as f:
+            f.write("n_feats,mean,std\n")
+
+            for k, v in all_scores.items():
+                f.write(f"{k},{v[0]},{v[1]}\n")
+
+
+def main():
     datasets = os.listdir("data/Tabular")
     datasets.remove("Sensorless")
 
@@ -467,15 +606,26 @@ if __name__ == "__main__":
         test_X = test_X.fillna(0)
 
         train_ds = Dataset(train_X, train_y)
+        val_ds = Dataset(val_X, val_y)
         test_ds = Dataset(test_X, test_y)
 
         train_loader = DataLoader(
             train_ds, batch_size=32, shuffle=True
         )
 
+        val_loader = DataLoader(
+            val_ds, batch_size=32, shuffle=True
+        )
+
         test_loader = DataLoader(
             test_ds, batch_size=32, shuffle=True
         )
 
-        # run_model(train_loader, test_loader, 0, dataset_name=dataset)
-        run_model_different_reg(train_loader, test_loader, 0, dataset_name=dataset)
+        # run_model(train_loader, val_loader, test_loader, 0, dataset_name=dataset)
+        run_model_different_reg(train_loader, val_loader, test_loader, 0, dataset_name=dataset)
+
+
+if __name__ == "__main__":
+    # main()
+    # preprocess_dfcn()
+    run_dfcn_data(save_res=False)
