@@ -694,7 +694,7 @@ def check_alpha_beta():
         val_scores = []
 
         for j in range(val_X.shape[1]):
-            new_val_X = test_X.clone()
+            new_val_X = val_X.clone()
             new_val_X[:, j] = 0
 
             score = model.score(new_val_X, val_y)
