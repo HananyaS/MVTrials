@@ -28,7 +28,7 @@ class RegModel(torch.nn.Module):
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.to(self.device)
-        self.double()
+        # self.double()
 
     @staticmethod
     def rand_bernoulli(x, p, gamma=100):
@@ -157,7 +157,7 @@ class RegModel(torch.nn.Module):
                         y_pred_f, reconstruction_f = self(X_f, drop=False)
 
                         diffs_partial[f] = diff_criterion(y_pred_f, y_pred_full)
-                        reconstruction_partial[f] = l2_criterion(reconstruction_f[f], X[f])
+                        reconstruction_partial[f] = l2_criterion(reconstruction_f[:, f], X[:, f])
 
                     if reg_type == 'max':
                         loss_partial = diffs_partial.max()

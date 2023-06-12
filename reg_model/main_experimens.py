@@ -88,7 +88,7 @@ def main(resfile: str = "all_results.csv"):
     datasets = os.listdir("data/Tabular")
     datasets.remove("Sensorless")
 
-    # datasets = ["Ecoli", "Accent", "Iris"]
+    datasets = ["Ecoli", "Accent", "Iris"]
     # datasets = ["Iris"]
 
     res = []
