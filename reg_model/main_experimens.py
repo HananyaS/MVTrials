@@ -11,6 +11,7 @@ from regModel import RegModel as Model
 from dataset import Dataset
 
 from itertools import product
+import torch
 
 warnings.filterwarnings("ignore")
 
@@ -25,6 +26,8 @@ parser.add_argument("--dataset", type=str, default="Wifi")
 parser.add_argument("--full", type=str2bool, default=True)
 
 args = parser.parse_args()
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: DataLoader, p: float, dataset_name: str,
@@ -150,20 +153,21 @@ def main(resfile: str = "all_results.csv"):
             test_ds, batch_size=32, shuffle=True
         )
 
-        try:
-            score_full, score_partial_mean, score_partial_std = run_model(train_loader, val_loader, test_loader, 0,
-                                                                          dataset_name=dataset,
-                                                                          use_layer_norm=use_layer_norm,
-                                                                          feats_weighting=feats_weighting,)
+        # try:
 
-            res.append(
-                [dataset, use_aug, use_layer_norm, feats_weighting, score_full, score_partial_mean, score_partial_std])
+        score_full, score_partial_mean, score_partial_std = run_model(train_loader, val_loader, test_loader, 0,
+                                                                      dataset_name=dataset,
+                                                                      use_layer_norm=use_layer_norm,
+                                                                      feats_weighting=feats_weighting, )
 
-            f.write(','.join([str(v) for v in res[-1]]) + "\n")
+        res.append(
+            [dataset, use_aug, use_layer_norm, feats_weighting, score_full, score_partial_mean, score_partial_std])
 
-        except:
-            print(f"Skip {dataset}")
-            continue
+        f.write(','.join([str(v) for v in res[-1]]) + "\n")
+
+        # except:
+        #     print(f"Skip {dataset}")
+        #     continue
 
 
 if __name__ == '__main__':

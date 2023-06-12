@@ -2,12 +2,13 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, X: pd.DataFrame, y: pd.DataFrame, shuffle: bool = True, norm: bool = True,
                  add_aug: bool = False):
-        self.X = torch.from_numpy(X.values)
-        self.y = torch.from_numpy(y.values)
+        self.X = torch.from_numpy(X.values).to(device)
+        self.y = torch.from_numpy(y.values).to(device)
 
         if shuffle:
             idx = torch.randperm(len(self.X))
@@ -40,8 +41,8 @@ class Dataset(torch.utils.data.Dataset):
         feats2norm_ = [i for i in range(self.X.shape[1]) if torch.unique(self.X[:, i]).shape[0] > 2]
         feats2norm = list(set(feats2norm_ + feats2norm))
 
-        mean = torch.zeros(self.X.shape[1])
-        std = torch.ones(self.X.shape[1])
+        mean = torch.zeros(self.X.shape[1]).float().to(device)
+        std = torch.ones(self.X.shape[1]).float().to(device)
 
         mean[feats2norm] = self.X[:, feats2norm].mean(dim=0).float()
         std[feats2norm] = self.X[:, feats2norm].std(dim=0).float()

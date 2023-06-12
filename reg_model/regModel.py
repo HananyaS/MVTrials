@@ -26,6 +26,8 @@ class RegModel(torch.nn.Module):
         if use_layer_norm:
             self.layer_norm = nn.LayerNorm(input_dim)
 
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.to(self.device)
         self.double()
 
     @staticmethod
@@ -34,10 +36,12 @@ class RegModel(torch.nn.Module):
         mask = 1 / (1 + torch.exp(-gamma * (uni_probs - p)))
         return mask * x
 
-    def forward(self, x, drop=True):
-        if self.training and drop:
-            x = self.rand_bernoulli(x, torch.ones(x.shape[1]) * self.p)
-            # x[:, mask.flatten()] = 0
+    def forward(self, x, drop=False):
+        # x.to(self.device)
+
+        # if self.training and drop:
+        #     x = self.rand_bernoulli(x, torch.ones(x.shape[1]) * self.p)
+        #     x[:, mask.flatten()] = 0
 
         x = self.fc1(x)
 
