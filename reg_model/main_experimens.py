@@ -106,6 +106,9 @@ def main(resfile: str = "all_results.csv"):
 
     for dataset, use_aug, use_layer_norm, feats_weighting in product(datasets, [True, False], [True, False],
                                                                      [True, False]):
+        if dataset.lower() in ["wine", "htru2", "parkinson"]:
+            continue
+
         data = load_data(dataset, args.full)
 
         if data[-1] == "tabular":

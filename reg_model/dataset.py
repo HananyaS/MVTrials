@@ -7,7 +7,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, X: pd.DataFrame, y: pd.DataFrame, shuffle: bool = True, norm: bool = True,
                  add_aug: bool = False):
-        self.X = torch.from_numpy(X.values).to(device)
+        self.X = torch.from_numpy(X.values).to(device).float()
         self.y = torch.from_numpy(y.values).to(device)
 
         if shuffle:
