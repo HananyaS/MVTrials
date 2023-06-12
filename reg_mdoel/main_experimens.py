@@ -82,11 +82,11 @@ def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: Dat
 
 
 def main(resfile: str = "all_results.csv"):
-    datasets = os.listdir("../data/Tabular")
+    datasets = os.listdir("data/Tabular")
     datasets.remove("Sensorless")
 
     # datasets = ["Ecoli", "Accent", "Iris"]
-    datasets = ["Iris"]
+    # datasets = ["Iris"]
 
     res = []
 
@@ -150,15 +150,20 @@ def main(resfile: str = "all_results.csv"):
             test_ds, batch_size=32, shuffle=True
         )
 
-        score_full, score_partial_mean, score_partial_std = run_model(train_loader, val_loader, test_loader, 0,
-                                                                      dataset_name=dataset,
-                                                                      use_layer_norm=use_layer_norm,
-                                                                      feats_weighting=feats_weighting)
+        try:
+            score_full, score_partial_mean, score_partial_std = run_model(train_loader, val_loader, test_loader, 0,
+                                                                          dataset_name=dataset,
+                                                                          use_layer_norm=use_layer_norm,
+                                                                          feats_weighting=feats_weighting,)
 
-        res.append(
-            [dataset, use_aug, use_layer_norm, feats_weighting, score_full, score_partial_mean, score_partial_std])
+            res.append(
+                [dataset, use_aug, use_layer_norm, feats_weighting, score_full, score_partial_mean, score_partial_std])
 
-        f.write(','.join([str(v) for v in res[-1]]) + "\n")
+            f.write(','.join([str(v) for v in res[-1]]) + "\n")
+
+        except:
+            print(f"Skip {dataset}")
+            continue
 
 
 if __name__ == '__main__':

@@ -69,7 +69,7 @@ class RegModel(torch.nn.Module):
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, dataset_name: str, lr: float = 1e-2,
             n_epochs: int = 300, verbose: bool = True, early_stopping: int = 30,
-            reg_type: str = "l1", alpha: float = 1, beta: float = 1, feats_weighting: bool = False):
+            reg_type: str = "l1", alpha: float = 1, beta: float = 0, feats_weighting: bool = False):
         optimizer = Adam(self.parameters(), lr=lr)
         min_val_loss = np.inf
         best_model = None
@@ -105,7 +105,8 @@ class RegModel(torch.nn.Module):
                     y_pred_f, reconstruction_f = self(X_f, drop=False)
 
                     diffs_partial[f] = diff_criterion(y_pred_f, y_pred_full) * losses_weight_feats[f].item()
-                    reconstruction_partial[f] = l2_criterion(reconstruction_f[f], X[f]) * losses_weight_feats[f].item()
+                    reconstruction_partial[f] = l2_criterion(reconstruction_f[:, f], X[:, f]) * losses_weight_feats[
+                        f].item()
 
                     # if f == 0:
                     #     loss_partial = mse_criterion(y_pred_f, y_pred_full)
