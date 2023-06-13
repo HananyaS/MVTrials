@@ -134,7 +134,7 @@ class RegModel(torch.nn.Module):
                 optimizer.step()
 
                 if feats_weighting:
-                    losses_weight_feats = losses_weight_feats.detach() * (diffs_partial + reconstruction_partial)
+                    losses_weight_feats = losses_weight_feats.detach() * (alpha * diffs_partial + beta * reconstruction_partial)
                     losses_weight_feats = losses_weight_feats / losses_weight_feats.sum()
 
             full_loss_train.append(sum(epoch_loss_full_train) / len(train_loader.dataset))
@@ -156,8 +156,8 @@ class RegModel(torch.nn.Module):
                         X_f[:, f] = 0
                         y_pred_f, reconstruction_f = self(X_f, drop=False)
 
-                        diffs_partial[f] = diff_criterion(y_pred_f, y_pred_full)
-                        reconstruction_partial[f] = l2_criterion(reconstruction_f[:, f], X[:, f])
+                        diffs_partial[f] = diff_criterion(y_pred_f, y_pred_full) * losses_weight_feats[f].item()
+                        reconstruction_partial[f] = l2_criterion(reconstruction_f[:, f], X[:, f]) * losses_weight_feats[f].item()
 
                     if reg_type == 'max':
                         loss_partial = diffs_partial.max()

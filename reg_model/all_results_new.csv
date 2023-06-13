@@ -1,0 +1,2 @@
+dataset,use_aug,use_layer_norm,feats_weighting,score_full_mean,score_partial_mean,score_partial_std
+Spam,True,True,True,0.9649122953414917,0.968,0.008
