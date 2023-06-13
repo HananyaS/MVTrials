@@ -89,7 +89,7 @@ def main(resfile: str = "all_results.csv"):
     datasets.remove("Sensorless")
     datasets.remove("Credit")
     datasets.append("Credit")
-    datasets.append("Sensorless")
+    # datasets.append("Sensorless")
 
     # datasets = ["Ecoli", "Accent", "Iris"]
     # datasets = ["Iris"]
@@ -177,4 +177,4 @@ def main(resfile: str = "all_results.csv"):
 
 
 if __name__ == '__main__':
-    main(resfile="all_results.csv")
+    main(resfile="all_results_fixed_fw.csv")
