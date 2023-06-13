@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, X: pd.DataFrame, y: pd.DataFrame, shuffle: bool = True, norm: bool = True,
                  add_aug: bool = False):

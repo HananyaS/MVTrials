@@ -87,6 +87,9 @@ def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: Dat
 def main(resfile: str = "all_results.csv"):
     datasets = os.listdir("data/Tabular")
     datasets.remove("Sensorless")
+    datasets.remove("Credit")
+    datasets.append("Credit")
+    datasets.append("Sensorless")
 
     # datasets = ["Ecoli", "Accent", "Iris"]
     # datasets = ["Iris"]
