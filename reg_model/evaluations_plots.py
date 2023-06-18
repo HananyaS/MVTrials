@@ -9,7 +9,8 @@ def load_xgb_res():
     return res_as_dict
 
 
-def plot_res(runs_names, raw_datasets_names, labels, full_results, partial_results):
+def plot_res(runs_names, raw_datasets_names, labels, full_results, partial_results,
+             savefile: str = 'all_results_diffs.png'):
     # raw_datasets_names = [ds.split('-')[0] for ds in runs_names]
     colors = plt.get_cmap("tab20").colors
 
@@ -43,5 +44,5 @@ def plot_res(runs_names, raw_datasets_names, labels, full_results, partial_resul
     #     plt.annotate(ds, (diff_full_xgb[ds], diff_partial_full[ds]))
 
     plt.legend()
-    plt.savefig("all_results_diffs.png")
+    plt.savefig(savefile)
     plt.show()

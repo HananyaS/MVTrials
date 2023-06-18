@@ -219,7 +219,7 @@ def run_many_datasets(datasets: list = None, save_res: bool = False, **kwargs):
 
     if save_res:
         res_df = pd.DataFrame(all_res).T
-        res_df.to_csv(f"fw_{kwargs['weight_type']}.csv") 
+        res_df.to_csv(f"fw_{kwargs['weight_type']}.csv")
 
     return all_res
 
@@ -247,4 +247,4 @@ if __name__ == '__main__':
     title_datasets = [f"{d} ({fw[i]})" for i, d in enumerate(raw_datasets)]
 
     plot_res(runs_names=title_datasets, raw_datasets_names=raw_datasets, labels=fw, full_results=full_scores,
-             partial_results=partial_scores, )
+             partial_results=partial_scores, savefile="all_res_different_fw.png")
