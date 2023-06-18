@@ -2,8 +2,10 @@ import numpy as np
 import pandas as pd
 
 import matplotlib.pyplot as plt
+from evaluations_plots import plot_res
 
-if __name__ == '__main__':
+
+def plot_diffs():
     res_df = pd.read_csv("all_results_fixed_fw.csv")
 
     # convert use_aug, use_layer_norm, and feats_weighting to meaningful short names
@@ -11,7 +13,27 @@ if __name__ == '__main__':
     res_df["use_layer_norm"] = res_df["use_layer_norm"].apply(lambda x: "ln" if x else "n_ln")
     res_df["feats_weighting"] = res_df["feats_weighting"].apply(lambda x: "fw" if x else "n_fw")
 
-    # plot the results as a bar subplots, with each bar being different configurations and each subplot being a dataset - there are 9 datasets
+    res_df["config"] = res_df.apply(
+        lambda row: f"{row['dataset']}-{row['use_aug']}-{row['use_layer_norm']}-{row['feats_weighting']}",
+        axis=1)
+
+    configs = res_df["config"].values
+    full_scores = res_df["score_full_mean"].values
+    partial_scores = res_df["score_partial_mean"].values
+    raw_ds_names = res_df["dataset"].values
+
+    plot_res(configs, raw_ds_names, raw_ds_names, full_scores, partial_scores)
+
+
+def plot_res_old(datasets, full_results, partial_results):
+    res_df = pd.read_csv("all_results_fixed_fw.csv")
+
+    # convert use_aug, use_layer_norm, and feats_weighting to meaningful short names
+    res_df["use_aug"] = res_df["use_aug"].apply(lambda x: "aug" if x else "n_aug")
+    res_df["use_layer_norm"] = res_df["use_layer_norm"].apply(lambda x: "ln" if x else "n_ln")
+    res_df["feats_weighting"] = res_df["feats_weighting"].apply(lambda x: "fw" if x else "n_fw")
+
+    # plot the results as a bar subplots, with each bar being different configurations and each subplot being a dataset - there are 9 runs_names
     # a configuration is a combination of use_aug, use_layer_norm, and feats_weighting
     # create subplots for each dataset, and a color for each configuration
 
@@ -100,7 +122,6 @@ if __name__ == '__main__':
     # plt.show()
     plt.clf()
 
-
     # 3. feats_weighting
 
     plt.subplots(4, 2, figsize=(20, 20))
@@ -116,7 +137,8 @@ if __name__ == '__main__':
                     feats_weighting_ds["score_partial_mean"] - ds["score_partial_mean"].min(), color=color_palette[j],
                     yerr=feats_weighting_ds["score_partial_std"])
             plt.xticks(np.arange(feats_weighting_ds.shape[0]) * 3 + j,
-                       [f"{x}-{y}" for x, y in zip(feats_weighting_ds["use_aug"], feats_weighting_ds["use_layer_norm"])],
+                       [f"{x}-{y}" for x, y in
+                        zip(feats_weighting_ds["use_aug"], feats_weighting_ds["use_layer_norm"])],
                        rotation=45)
 
             legend.add(f"{feats_weighting}")
@@ -129,3 +151,7 @@ if __name__ == '__main__':
     plt.savefig("all_results_feats_weighting.png")
     # plt.show()
     plt.clf()
+
+
+if __name__ == '__main__':
+    plot_diffs()

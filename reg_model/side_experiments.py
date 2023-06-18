@@ -334,7 +334,7 @@ def check_alpha_beta():
     datasets = os.listdir("data/Tabular")
     datasets.remove("Sensorless")
 
-    # datasets = ["Ecoli", "Accent", "Iris"]
+    # runs_names = ["Ecoli", "Accent", "Iris"]
 
     alphas = betas = [0, 0.5, 1, 5, 10]
     all_res = {}

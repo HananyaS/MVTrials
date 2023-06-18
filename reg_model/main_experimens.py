@@ -1,18 +1,18 @@
 import os
 import argparse
 import warnings
+from itertools import product
 
 import numpy as np
 import pandas as pd
 
+import torch
 from torch.utils.data import DataLoader
 
 from data.load_data import load_data, split_X_y
 from regModel import RegModel as Model
 from dataset import Dataset
-
-from itertools import product
-import torch
+from evaluations_plots import plot_res
 
 warnings.filterwarnings("ignore")
 
@@ -146,9 +146,9 @@ def main(resfile: str = "all_results.csv"):
     datasets.remove("Sensorless")
     datasets.remove("Credit")
     datasets.append("Credit")
-    # datasets.append("Sensorless")
+    # runs_names.append("Sensorless")
 
-    # datasets = ["Ecoli", "Accent", "Iris"]
+    # runs_names = ["Ecoli", "Accent", "Iris"]
 
     res = []
 
@@ -204,8 +204,12 @@ def main_one_run(dataset: str, verbose: bool = False, **kwargs):
     return full_score, partial_score_mean, partial_score_std
 
 
-def run_many_datasets(**kwargs):
-    datasets = ["Sonar"]
+def run_many_datasets(datasets: list = None, save_res: bool = False, **kwargs):
+    if datasets is None:
+        datasets = os.listdir("data/Tabular")
+        datasets.remove("Sensorless")
+        datasets.remove("Credit")
+        datasets = ["Iris", "Accent", "Ecoli"]
 
     all_res = {}
 
@@ -213,14 +217,34 @@ def run_many_datasets(**kwargs):
         res = main_one_run(dataset, **kwargs)
         all_res[dataset] = res
 
-    res_df = pd.DataFrame(all_res).T
-    res_df.to_csv(f"fw_{kwargs['weight_type']}.csv")
+    if save_res:
+        res_df = pd.DataFrame(all_res).T
+        res_df.to_csv(f"fw_{kwargs['weight_type']}.csv") 
+
     return all_res
 
 
 if __name__ == '__main__':
-    # main(resfile="all_results_fixed_fw.csv")
-    # full_score, partial_score_mean, partial_score_std = main_one_run("Sonar", use_aug=True, use_layer_norm=True,
-    #                                                                  feats_weighting=False, weight_type=1, verbose=True)
+    res_avg = run_many_datasets(weight_type='avg', verbose=True)
+    res_loss = run_many_datasets(weight_type='loss', verbose=True)
 
-    run_many_datasets(weight_type='loss', verbose=True)
+    all_res = {k: [*res_avg[k], *res_loss[k]] for k in res_avg}
+    all_res = pd.DataFrame(all_res).T
+    all_res.columns = ["full_score_avg_fw", "partial_score_mean_avg_fw", "partial_score_std_avg_fw",
+                       "full_score_loss_fw", "partial_score_mean_loss_fw", "partial_score_std_loss_fw"]
+    all_res.to_csv("all_res_different_fw.csv")
+
+    full_scores_avg = [res_avg[k][0] for k in res_avg]
+    full_scores_loss = [res_loss[k][0] for k in res_loss]
+
+    partial_scores_avg = [res_avg[k][1] for k in res_avg]
+    partial_scores_loss = [res_loss[k][1] for k in res_loss]
+
+    full_scores = [*full_scores_avg, *full_scores_loss]
+    partial_scores = [*partial_scores_avg, *partial_scores_loss]
+    raw_datasets = [*res_avg.keys(), *res_loss.keys()]
+    fw = ["avg"] * len(res_avg) + ["loss"] * len(res_loss)
+    title_datasets = [f"{d} ({fw[i]})" for i, d in enumerate(raw_datasets)]
+
+    plot_res(runs_names=title_datasets, raw_datasets_names=raw_datasets, labels=fw, full_results=full_scores,
+             partial_results=partial_scores, )
