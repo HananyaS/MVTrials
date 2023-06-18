@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 
 from torch.utils.data import DataLoader
 
-from data.load_data import load_data, split_X_y
+from data.load_data import get_data, split_X_y
 from regModel import RegModel as Model
 from dataset import Dataset
 
@@ -220,8 +220,8 @@ def preprocess_dfcn(n_feats2remain):
     train = pd.read_csv("dfcn_data/raw/training.csv", index_col=0)
     test = pd.read_csv("dfcn_data/raw/test.csv", index_col=0)
 
-    train.drop(columns=["our_cxr_score"], inplace=True)
-    test.drop(columns=["our_cxr_score"], inplace=True)
+    # train.drop(columns=["our_cxr_score"], inplace=True)
+    # test.drop(columns=["our_cxr_score"], inplace=True)
 
     test.rename(columns={"Gender": "Sex"}, inplace=True)
 
@@ -343,7 +343,7 @@ def check_alpha_beta():
     f.write("dataset,alpha,beta,score\n")
 
     for dataset, alpha, beta in product(datasets, alphas, betas):
-        data = load_data(dataset, args.full)
+        data = get_data(dataset, args.full)
 
         if data[-1] == "tabular":
             train, val, test, target_col = data[:-1]

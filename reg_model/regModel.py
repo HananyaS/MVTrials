@@ -73,7 +73,8 @@ class RegModel(torch.nn.Module):
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, dataset_name: str, lr: float = 1e-2,
             n_epochs: int = 300, verbose: bool = True, early_stopping: int = 30,
-            reg_type: str = "l1", alpha: float = 1, beta: float = 0, feats_weighting: bool = False):
+            reg_type: str = "l1", alpha: float = 1, beta: float = 0, feats_weighting: bool = False,
+            weight_type: str = 0):
         optimizer = Adam(self.parameters(), lr=lr)
         min_val_loss = np.inf
         best_model = None
@@ -90,7 +91,7 @@ class RegModel(torch.nn.Module):
         losses_weight_feats = losses_weight_feats / losses_weight_feats.sum()
         losses_weight_feats.requires_grad = False
 
-        for epoch in tqdm(range(n_epochs)):
+        for epoch in tqdm(range(n_epochs)) if verbose else range(n_epochs):
             epoch_loss_full_train, epoch_loss_partial_train = [], []
             epoch_loss_full_val, epoch_loss_partial_val = [], []
 
@@ -134,8 +135,21 @@ class RegModel(torch.nn.Module):
                 optimizer.step()
 
                 if feats_weighting:
-                    losses_weight_feats = losses_weight_feats.detach() * (alpha * diffs_partial + beta * reconstruction_partial)
+                    if weight_type == 'avg':
+                        norm_losses = (alpha * diffs_partial + beta * reconstruction_partial) / (
+                                alpha * diffs_partial + beta * reconstruction_partial).sum()
+                        losses_weight_feats = losses_weight_feats.detach() + norm_losses
+
+                    elif weight_type == 'mult':
+                        losses_weight_feats = losses_weight_feats.detach() * (
+                                alpha * diffs_partial + beta * reconstruction_partial)
+
+                    elif weight_type == 'loss':
+                        losses_weight_feats = losses_weight_feats ** 2
+
+                    # losses_weight_feats = losses_weight_feats.detach() * (alpha * diffs_partial + beta * reconstruction_partial)
                     losses_weight_feats = losses_weight_feats / losses_weight_feats.sum()
+
 
             full_loss_train.append(sum(epoch_loss_full_train) / len(train_loader.dataset))
             partial_loss_train.append(sum(epoch_loss_partial_train) / len(train_loader.dataset))
@@ -157,7 +171,8 @@ class RegModel(torch.nn.Module):
                         y_pred_f, reconstruction_f = self(X_f, drop=False)
 
                         diffs_partial[f] = diff_criterion(y_pred_f, y_pred_full) * losses_weight_feats[f].item()
-                        reconstruction_partial[f] = l2_criterion(reconstruction_f[:, f], X[:, f]) * losses_weight_feats[f].item()
+                        reconstruction_partial[f] = l2_criterion(reconstruction_f[:, f], X[:, f]) * losses_weight_feats[
+                            f].item()
 
                     if reg_type == 'max':
                         loss_partial = diffs_partial.max()
@@ -186,7 +201,9 @@ class RegModel(torch.nn.Module):
                     epochs_no_improve += 1
 
                     if epochs_no_improve == early_stopping:
-                        print(f"Early stopping at epoch {epoch + 1}")
+                        if verbose:
+                            print(f"Early stopping at epoch {epoch + 1}")
+
                         self.load_state_dict(best_model.state_dict())
                         break
 
