@@ -10,8 +10,8 @@ if __name__ == '__main__':
 
     for dataset in datasets:
         print("Starting", dataset)
-        if dataset in ["Sensorless", "Credit"]:
-            continue
+        # if dataset in ["Sensorless", "Credit"]:
+        #     continue
         train_ds, val_ds, test_ds,  = get_split_data(dataset, use_aug=True, as_loader=False, norm=False)
 
         X_train, y_train = train_ds.X, train_ds.y

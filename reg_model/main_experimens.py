@@ -209,7 +209,10 @@ def run_many_datasets(datasets: list = None, save_res: bool = False, **kwargs):
         datasets = os.listdir("data/Tabular")
         datasets.remove("Sensorless")
         datasets.remove("Credit")
-        datasets = ["Iris", "Accent", "Ecoli"]
+        datasets.remove("HTRU2")
+        datasets.remove("Ecoli")
+
+        # datasets = ["Iris", "Accent", "Ecoli"]
 
     all_res = {}
 
