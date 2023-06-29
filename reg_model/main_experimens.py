@@ -25,10 +25,19 @@ str2bool = lambda x: (str(x).lower() == "true")
 
 parser.add_argument("--dataset", type=str, default="Wifi")
 parser.add_argument("--full", type=str2bool, default=True)
+parser.add_argument("--verbose", type=str2bool, default=False)
+
 parser.add_argument("--reg_type", type=str, default="var")
 parser.add_argument("--weight_type", type=str, default="loss")
-parser.add_argument("--verbose", type=str2bool, default=False)
 parser.add_argument("--alpha", type=float, default=0)
+parser.add_argument("--use_layer_norm", type=str2bool, default=False)
+parser.add_argument("--use_aug", type=str2bool, default=False)
+
+parser.add_argument("--lr", type=float, default=1e-2)
+parser.add_argument("--batch_size", type=int, default=32)
+
+parser.add_argument("--n_epochs", type=int, default=300)
+parser.add_argument("--early_stopping", type=int, default=30)
 
 args = parser.parse_args()
 
@@ -51,7 +60,7 @@ def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: Dat
 
     model = Model(train_loader.dataset.X.shape[1], int(train_loader.dataset.X.shape[1] * .75),
                   len(train_loader.dataset.y.unique()), use_layer_norm=kwargs.pop("use_layer_norm", True), )
-    model.fit(train_loader, val_loader, n_epochs=300, dataset_name=dataset_name, **kwargs)
+    model.fit(train_loader, val_loader, dataset_name=dataset_name, **kwargs)
 
     test_X = test_loader.dataset.X
     test_y = test_loader.dataset.y
@@ -88,7 +97,8 @@ def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: Dat
     return model_score_full, np.mean(scores_partial).round(3), np.std(scores_partial).round(3)
 
 
-def get_split_data(dataset: str, use_aug: bool = False, norm: bool = True, as_loader: bool = True):
+def get_split_data(dataset: str, use_aug: bool = False, norm: bool = True, as_loader: bool = True,
+                   batch_size: int = 32):
     data = load_data(dataset, args.full)
 
     if data[-1] == "tabular":
@@ -129,15 +139,15 @@ def get_split_data(dataset: str, use_aug: bool = False, norm: bool = True, as_lo
         return train_ds, val_ds, test_ds
 
     train_loader = DataLoader(
-        train_ds, batch_size=32, shuffle=True
+        train_ds, batch_size=batch_size, shuffle=True
     )
 
     val_loader = DataLoader(
-        val_ds, batch_size=32, shuffle=True
+        val_ds, batch_size=batch_size, shuffle=True
     )
 
     test_loader = DataLoader(
-        test_ds, batch_size=32, shuffle=True
+        test_ds, batch_size=batch_size, shuffle=True
     )
 
     return train_loader, val_loader, test_loader
@@ -234,7 +244,8 @@ def run_many_datasets(datasets: list = None, save_res: bool = False, **kwargs):
 
 if __name__ == '__main__':
     res_avg = run_many_datasets(weight_type=args.weight_type, verbose=args.verbose, reg_type=args.reg_type,
-                                alpha=args.alpha, )
+                                alpha=args.alpha, use_layer_norm=args.use_layer_norm, use_aug=args.use_aug,
+                                feats_weighting=args.weight_type is not None, lr=args.lr, n_epochs=args.n_epochs, )
 
     # all_res = {k: [*res_avg[k], *res_loss[k]] for k in res_avg}
     # all_res = pd.DataFrame(all_res).T
