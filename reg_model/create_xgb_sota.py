@@ -1,12 +1,18 @@
+import numpy as np
 import xgboost as xgb
 from main_experimens import get_split_data
 import os
 import pandas as pd
+from copy import deepcopy
 
 
 if __name__ == '__main__':
     datasets = os.listdir("data/Tabular")
-    all_results = {}
+    datasets.remove("Sensorless")
+    datasets.remove("Credit")
+
+    full_results = {}
+    partial_results = {}
 
     for dataset in datasets:
         print("Starting", dataset)
@@ -22,7 +28,18 @@ if __name__ == '__main__':
         xgb_model.fit(X_train, y_train)
         score = xgb_model.score(X_test, y_test)
 
-        all_results[dataset] = score
+        full_results[dataset] = score
         print(f"{dataset}: {score}")
 
-    pd.DataFrame.from_dict(all_results, orient="index").to_csv("xgb_sota.csv")
+        partial_res = []
+
+        for i in range(X_test.shape[1]):
+            X_test_copy = deepcopy(X_test)
+            X_test_copy[:, i] = 0
+            score = xgb_model.score(X_test_copy, y_test)
+            partial_res.append(score)
+
+        partial_results[dataset] = f"{np.mean(partial_res)} +- {np.std(partial_res)}"
+
+    pd.DataFrame.from_dict(full_results, orient="index").to_csv("xgb_sota_full.csv")
+    pd.DataFrame.from_dict(partial_results, orient="index").to_csv("xgb_sota_partial.csv")

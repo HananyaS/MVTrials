@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from data.load_data import load_data, split_X_y
 from regModel import RegModel as Model
 from dataset import Dataset
-from evaluations_plots import plot_res
+from evaluations_plots import plot_res, load_xgb_res
 
 warnings.filterwarnings("ignore")
 
@@ -25,25 +25,33 @@ str2bool = lambda x: (str(x).lower() == "true")
 
 parser.add_argument("--dataset", type=str, default="Wifi")
 parser.add_argument("--full", type=str2bool, default=True)
+parser.add_argument("--reg_type", type=str, default="var")
+parser.add_argument("--weight_type", type=str, default="loss")
+parser.add_argument("--verbose", type=str2bool, default=False)
+parser.add_argument("--alpha", type=float, default=0)
 
 args = parser.parse_args()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+XGB_FULL_RES, XGB_PARTIAL_RES = load_xgb_res()
+
+assert args.reg_type in ["l1", "l2", "max", "var"]
+assert args.weight_type in ["loss", "avg", "mult"]
 
 
-def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: DataLoader, p: float, dataset_name: str,
-              save_res: bool = False, use_layer_norm: bool = True, feats_weighting: bool = True,
-              weight_type: str = 'avg'):
-    assert p is None or 0 <= p < 1
+# def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: DataLoader, p: float, dataset_name: str,
+#               save_res: bool = False, use_layer_norm: bool = True, feats_weighting: bool = True,
+#               weight_type: str = 'avg', reg_type: str = 'var', verbose: bool = True, alpha: float = 1):
 
+def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: DataLoader, dataset_name: str,
+              save_res: bool = False, **kwargs):
     print("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     print("Dataset:\t", dataset_name)
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
     model = Model(train_loader.dataset.X.shape[1], int(train_loader.dataset.X.shape[1] * .75),
-                  len(train_loader.dataset.y.unique()), p=p, use_layer_norm=use_layer_norm)
-    model.fit(train_loader, val_loader, n_epochs=300, verbose=False, dataset_name=dataset_name,
-              feats_weighting=feats_weighting, weight_type=weight_type)
+                  len(train_loader.dataset.y.unique()), use_layer_norm=kwargs.pop("use_layer_norm", True), )
+    model.fit(train_loader, val_loader, n_epochs=300, dataset_name=dataset_name, **kwargs)
 
     test_X = test_loader.dataset.X
     test_y = test_loader.dataset.y
@@ -51,9 +59,6 @@ def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: Dat
     model_score_full = model.score(test_X, test_y)
 
     print()
-    # print(
-    #     f"All features score:\t{model_score_full}"
-    # )
 
     scores_partial = []
 
@@ -63,9 +68,6 @@ def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: Dat
 
         score = model.score(new_test_X, test_y)
         scores_partial.append(score)
-
-    # print(
-    #     f"Partial score:\t{np.mean(scores_partial).round(3)} +- {np.std(scores_partial).round(3)}")
 
     if save_res:
         to_save = {
@@ -141,7 +143,7 @@ def get_split_data(dataset: str, use_aug: bool = False, norm: bool = True, as_lo
     return train_loader, val_loader, test_loader
 
 
-def main(resfile: str = "all_results.csv"):
+def main(resfile: str = "full_results.csv"):
     datasets = os.listdir("data/Tabular")
     datasets.remove("Sensorless")
     datasets.remove("Credit")
@@ -188,8 +190,8 @@ def main_one_run(dataset: str, verbose: bool = False, **kwargs):
 
     train_loader, val_loader, test_loader = get_split_data(dataset, use_aug=use_aug)
 
-    full_score, partial_score_mean, partial_score_std = run_model(train_loader, val_loader, test_loader, 0,
-                                                                  dataset_name=dataset, **kwargs)
+    full_score, partial_score_mean, partial_score_std = run_model(train_loader, val_loader, test_loader,
+                                                                  dataset_name=dataset, **kwargs, verbose=verbose)
 
     # full_type1, partial_type1_mean, partial_type1_std = run_model(train_loader, val_loader, test_loader, 0,
     #                                                               dataset_name=dataset, **kwargs)
@@ -197,9 +199,12 @@ def main_one_run(dataset: str, verbose: bool = False, **kwargs):
     # print(f"Full score:\t{full_type0} / {full_type1}")
     # print(f"Partial score:\t{partial_type0_mean} +- {partial_type0_std} / {partial_type1_mean} +- {partial_type1_std}")
 
-    if verbose:
-        print(f"Full score:\t{full_score}")
-        print(f"Partial score:\t{partial_score_mean} +- {partial_score_std}")
+    # if verbose:
+
+    print(f"Full score:\t{full_score}")
+    print(f"XGBoost full score:\t{XGB_FULL_RES[dataset]}")
+    print(f"Partial score:\t{partial_score_mean} +- {partial_score_std}")
+    print(f"XGBoost partial score:\t{XGB_PARTIAL_RES[dataset]}")
 
     return full_score, partial_score_mean, partial_score_std
 
@@ -212,7 +217,7 @@ def run_many_datasets(datasets: list = None, save_res: bool = False, **kwargs):
         datasets.remove("HTRU2")
         datasets.remove("Ecoli")
 
-        # datasets = ["Iris", "Accent", "Ecoli"]
+        # datasets = ["Banknote", "Parkinson"]
 
     all_res = {}
 
@@ -228,26 +233,26 @@ def run_many_datasets(datasets: list = None, save_res: bool = False, **kwargs):
 
 
 if __name__ == '__main__':
-    res_avg = run_many_datasets(weight_type='avg', verbose=True)
-    res_loss = run_many_datasets(weight_type='loss', verbose=True)
+    res_avg = run_many_datasets(weight_type=args.weight_type, verbose=args.verbose, reg_type=args.reg_type,
+                                alpha=args.alpha, )
 
-    all_res = {k: [*res_avg[k], *res_loss[k]] for k in res_avg}
-    all_res = pd.DataFrame(all_res).T
-    all_res.columns = ["full_score_avg_fw", "partial_score_mean_avg_fw", "partial_score_std_avg_fw",
-                       "full_score_loss_fw", "partial_score_mean_loss_fw", "partial_score_std_loss_fw"]
-    all_res.to_csv("all_res_different_fw.csv")
+    # all_res = {k: [*res_avg[k], *res_loss[k]] for k in res_avg}
+    # all_res = pd.DataFrame(all_res).T
+    # all_res.columns = ["full_score_avg_fw", "partial_score_mean_avg_fw", "partial_score_std_avg_fw",
+    #                    "full_score_loss_fw", "partial_score_mean_loss_fw", "partial_score_std_loss_fw"]
+    # all_res.to_csv("all_res_different_fw.csv")
+    #
+    # full_scores_avg = [res_avg[k][0] for k in res_avg]
+    # full_scores_loss = [res_loss[k][0] for k in res_loss]
+    #
+    # partial_scores_avg = [res_avg[k][1] for k in res_avg]
+    # partial_scores_loss = [res_loss[k][1] for k in res_loss]
+    #
+    # full_scores = [*full_scores_avg, *full_scores_loss]
+    # partial_scores = [*partial_scores_avg, *partial_scores_loss]
+    # raw_datasets = [*res_avg.keys(), *res_loss.keys()]
+    # fw = ["avg"] * len(res_avg) + ["loss"] * len(res_loss)
+    # title_datasets = [f"{d} ({fw[i]})" for i, d in enumerate(raw_datasets)]
 
-    full_scores_avg = [res_avg[k][0] for k in res_avg]
-    full_scores_loss = [res_loss[k][0] for k in res_loss]
-
-    partial_scores_avg = [res_avg[k][1] for k in res_avg]
-    partial_scores_loss = [res_loss[k][1] for k in res_loss]
-
-    full_scores = [*full_scores_avg, *full_scores_loss]
-    partial_scores = [*partial_scores_avg, *partial_scores_loss]
-    raw_datasets = [*res_avg.keys(), *res_loss.keys()]
-    fw = ["avg"] * len(res_avg) + ["loss"] * len(res_loss)
-    title_datasets = [f"{d} ({fw[i]})" for i, d in enumerate(raw_datasets)]
-
-    plot_res(runs_names=title_datasets, raw_datasets_names=raw_datasets, labels=fw, full_results=full_scores,
-             partial_results=partial_scores, savefile="all_res_different_fw.png")
+    # plot_res(runs_names=title_datasets, raw_datasets_names=raw_datasets, labels=fw, full_results=full_scores,
+    #          partial_results=partial_scores, savefile="all_res_different_fw.png")

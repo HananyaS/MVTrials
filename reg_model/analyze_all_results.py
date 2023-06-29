@@ -6,7 +6,7 @@ from evaluations_plots import plot_res
 
 
 def plot_diffs():
-    res_df = pd.read_csv("all_results_fixed_fw.csv")
+    res_df = pd.read_csv("results/csv/all_results_fixed_fw.csv")
 
     # convert use_aug, use_layer_norm, and feats_weighting to meaningful short names
     res_df["use_aug"] = res_df["use_aug"].apply(lambda x: "aug" if x else "n_aug")
@@ -26,7 +26,7 @@ def plot_diffs():
 
 
 def plot_res_old(datasets, full_results, partial_results):
-    res_df = pd.read_csv("all_results_fixed_fw.csv")
+    res_df = pd.read_csv("results/csv/all_results_fixed_fw.csv")
 
     # convert use_aug, use_layer_norm, and feats_weighting to meaningful short names
     res_df["use_aug"] = res_df["use_aug"].apply(lambda x: "aug" if x else "n_aug")
@@ -55,7 +55,7 @@ def plot_res_old(datasets, full_results, partial_results):
         plt.xlabel("Configuration")
 
     plt.tight_layout()
-    plt.savefig("all_results.png")
+    plt.savefig("full_results.png")
     # plt.show()
     plt.clf()
 

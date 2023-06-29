@@ -4,9 +4,11 @@ import pandas as pd
 
 
 def load_xgb_res():
-    res_df = pd.read_csv("xgb_sota.csv", index_col=0)
-    res_as_dict = res_df.to_dict()["0"]
-    return res_as_dict
+    full_res_df = pd.read_csv("xgb_sota_full.csv", index_col=0)
+    partial_res_df = pd.read_csv("xgb_sota_partial.csv", index_col=0)
+    full_res_as_dict = full_res_df.to_dict()["0"]
+    partial_res_as_dict = partial_res_df.to_dict()["0"]
+    return full_res_as_dict, partial_res_as_dict
 
 
 def plot_res(runs_names, raw_datasets_names, labels, full_results, partial_results,
@@ -14,12 +16,12 @@ def plot_res(runs_names, raw_datasets_names, labels, full_results, partial_resul
     # raw_datasets_names = [ds.split('-')[0] for ds in runs_names]
     colors = plt.get_cmap("tab20").colors
 
-    xgb_res = load_xgb_res()
-    diff_full_xgb = {ds: score - xgb_res[ds_raw_name] for ds, ds_raw_name, score in
+    xgb_full_res, _ = load_xgb_res()
+    diff_full_xgb = {ds: score - xgb_full_res[ds_raw_name] for ds, ds_raw_name, score in
                      zip(runs_names, raw_datasets_names, full_results)}
     diff_partial_full = {ds: full_results[i] - partial_results[i] for i, ds in enumerate(runs_names)}
 
-    # ds2color = {ds: colors[i] for i, ds in enumerate(xgb_res.keys())}
+    # ds2color = {ds: colors[i] for i, ds in enumerate(XGB_RES.keys())}
 
     # colors = [ds2color[ds] for ds in raw_datasets_names]
 
