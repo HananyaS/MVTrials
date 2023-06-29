@@ -67,20 +67,27 @@ def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: Dat
                   len(train_loader.dataset.y.unique()), use_layer_norm=kwargs.pop("use_layer_norm", True), )
     model.fit(train_loader, val_loader, dataset_name=dataset_name, **kwargs)
 
-    test_X = test_loader.dataset.X
-    test_y = test_loader.dataset.y
+    # test_X = test_loader.dataset.X
+    # test_y = test_loader.dataset.y
 
-    model_score_full = model.score(test_X, test_y)
+    # model_score_full = model.score(test_X, test_y)
+
+    val_X = val_loader.dataset.X
+    val_y = val_loader.dataset.y
+
+    model_score_full = model.score(val_X, val_y)
 
     print()
 
     scores_partial = []
 
-    for j in range(test_X.shape[1]):
-        new_test_X = test_X.clone()
-        new_test_X[:, j] = 0
+    # for j in range(test_X.shape[1]):
+    for j in range(val_X.shape[1]):
+        # new_test_X = test_X.clone()
+        new_val_X = val_X.clone()
+        new_val_X[:, j] = 0
 
-        score = model.score(new_test_X, test_y)
+        score = model.score(new_val_X, val_y)
         scores_partial.append(score)
 
     if resfile is not None:
