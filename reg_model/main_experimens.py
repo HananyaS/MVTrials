@@ -39,6 +39,10 @@ parser.add_argument("--batch_size", type=int, default=32)
 parser.add_argument("--n_epochs", type=int, default=300)
 parser.add_argument("--early_stopping", type=int, default=30)
 
+parser.add_argument("--resfile", type=str, default=None)
+
+parser.add_argument("--run_grid", type=str2bool, default=False)
+
 args = parser.parse_args()
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -46,6 +50,7 @@ XGB_FULL_RES, XGB_PARTIAL_RES = load_xgb_res()
 
 assert args.reg_type in ["l1", "l2", "max", "var"]
 assert args.weight_type in ["loss", "avg", "mult"]
+assert args.resfile is None or args.resfile.endswith(".csv"), "resfile must be None or end with .csv"
 
 
 # def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: DataLoader, p: float, dataset_name: str,
@@ -53,7 +58,7 @@ assert args.weight_type in ["loss", "avg", "mult"]
 #               weight_type: str = 'avg', reg_type: str = 'var', verbose: bool = True, alpha: float = 1):
 
 def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: DataLoader, dataset_name: str,
-              save_res: bool = False, **kwargs):
+              resfile: str = None, **kwargs):
     print("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     print("Dataset:\t", dataset_name)
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -78,21 +83,27 @@ def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: Dat
         score = model.score(new_test_X, test_y)
         scores_partial.append(score)
 
-    if save_res:
-        to_save = {
-            "model_with_regularization_all_features": model_score_full,
-            "model_with_regularization_partial": f"{np.mean(scores_partial).round(3)} +- {np.std(scores_partial).round(3)}"
-        }
+    if resfile is not None:
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        print("Results saved to:", resfile)
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
-        if not os.path.isfile("model_results.csv"):
-            f = open("model_results.csv", "a")
-            f.write(','.join(["dataset", *list(to_save.keys())]) + "\n")
+        # to_save = {
+        #     "model_with_regularization_all_features": model_score_full,
+        #     "model_with_regularization_partial": f"{np.mean(scores_partial).round(3)} +- {np.std(scores_partial).round(3)}"
+        # }
+
+        if not os.path.isfile(resfile):
+            f = open(resfile, "a")
+            f.write(','.join(["dataset", *list(kwargs.keys()), "full_score", "partial_score"]) + "\n")
             f.close()
 
-        with open("model_results.csv", "a") as f:
-            f.write(','.join([dataset_name, *[str(v) for v in to_save.values()]]) + "\n")
+        with open(resfile, "a") as f:
+            # f.write(','.join([dataset_name, *[str(v) for v in to_save.values()]]) + "\n")
+            f.write(','.join([dataset_name, *[str(v) for v in kwargs.values()], str(model_score_full),
+                              f"{np.mean(scores_partial)} +- {np.std(scores_partial)}"]) + "\n")
 
-        return to_save
+        # return to_save
 
     return model_score_full, np.mean(scores_partial).round(3), np.std(scores_partial).round(3)
 
@@ -198,7 +209,8 @@ def main_one_run(dataset: str, verbose: bool = False, **kwargs):
     else:
         use_aug = False
 
-    train_loader, val_loader, test_loader = get_split_data(dataset, use_aug=use_aug)
+    train_loader, val_loader, test_loader = get_split_data(dataset, use_aug=use_aug,
+                                                           batch_size=kwargs.pop("batch_size"))
 
     full_score, partial_score_mean, partial_score_std = run_model(train_loader, val_loader, test_loader,
                                                                   dataset_name=dataset, **kwargs, verbose=verbose)
@@ -219,7 +231,8 @@ def main_one_run(dataset: str, verbose: bool = False, **kwargs):
     return full_score, partial_score_mean, partial_score_std
 
 
-def run_many_datasets(datasets: list = None, save_res: bool = False, **kwargs):
+# def run_many_datasets(datasets: list = None, save_res: bool = False, **kwargs):
+def run_many_datasets(datasets: list = None, **kwargs):
     if datasets is None:
         datasets = os.listdir("data/Tabular")
         datasets.remove("Sensorless")
@@ -235,35 +248,66 @@ def run_many_datasets(datasets: list = None, save_res: bool = False, **kwargs):
         res = main_one_run(dataset, **kwargs)
         all_res[dataset] = res
 
-    if save_res:
-        res_df = pd.DataFrame(all_res).T
-        res_df.to_csv(f"fw_{kwargs['weight_type']}.csv")
+    # if save_res:
+    #     res_df = pd.DataFrame(all_res).T
+    #     res_df.to_csv(f"fw_{kwargs['weight_type']}.csv")
 
     return all_res
 
 
+def run_grid_search(dataset: str, search_space: dict, resfile: str, **kwargs):
+    all_confs = list(product(*search_space.values()))
+
+    for i, vals in enumerate(all_confs):
+        kwargs.update({k: v for k, v in zip(search_space.keys(), vals)})
+        main_one_run(dataset, resfile=resfile, **kwargs)
+        print(f"Done conf {i + 1}/{len(all_confs)}!")
+
+
 if __name__ == '__main__':
-    res_avg = run_many_datasets(weight_type=args.weight_type, verbose=args.verbose, reg_type=args.reg_type,
-                                alpha=args.alpha, use_layer_norm=args.use_layer_norm, use_aug=args.use_aug,
-                                feats_weighting=args.weight_type is not None, lr=args.lr, n_epochs=args.n_epochs, )
+    if args.run_grid:
+        assert args.reg_type in ["l1", "l2", "max", "var"]
+        assert args.weight_type in ["loss", "avg", "mult"]
 
-    # all_res = {k: [*res_avg[k], *res_loss[k]] for k in res_avg}
-    # all_res = pd.DataFrame(all_res).T
-    # all_res.columns = ["full_score_avg_fw", "partial_score_mean_avg_fw", "partial_score_std_avg_fw",
-    #                    "full_score_loss_fw", "partial_score_mean_loss_fw", "partial_score_std_loss_fw"]
-    # all_res.to_csv("all_res_different_fw.csv")
-    #
-    # full_scores_avg = [res_avg[k][0] for k in res_avg]
-    # full_scores_loss = [res_loss[k][0] for k in res_loss]
-    #
-    # partial_scores_avg = [res_avg[k][1] for k in res_avg]
-    # partial_scores_loss = [res_loss[k][1] for k in res_loss]
-    #
-    # full_scores = [*full_scores_avg, *full_scores_loss]
-    # partial_scores = [*partial_scores_avg, *partial_scores_loss]
-    # raw_datasets = [*res_avg.keys(), *res_loss.keys()]
-    # fw = ["avg"] * len(res_avg) + ["loss"] * len(res_loss)
-    # title_datasets = [f"{d} ({fw[i]})" for i, d in enumerate(raw_datasets)]
+        search_space = {
+            "reg_type": ["l1", "l2", "max", "var"],
+            "weight_type": [None, "loss", "avg", "mult"],
+            "alpha": [0, 0.5, 1, 2, 5],
+            "use_layer_norm": [True, False],
+            "use_aug": [True, False],
+            "lr": [0.001, 0.01, 0.1],
+            "batch_size": [32, 64],
+        }
 
-    # plot_res(runs_names=title_datasets, raw_datasets_names=raw_datasets, labels=fw, full_results=full_scores,
-    #          partial_results=partial_scores, savefile="all_res_different_fw.png")
+        # create a sample space with just one value per hyperparameter
+        # search_space = {k: [v[0]] for k, v in search_space.items()}
+        # search_space["reg_type"] = ["l1", "l2"]
+
+        run_grid_search(args.dataset, search_space, args.resfile, n_epochs=args.n_epochs)
+
+    else:
+        res_avg = run_many_datasets(weight_type=args.weight_type, verbose=args.verbose, reg_type=args.reg_type,
+                                    alpha=args.alpha, use_layer_norm=args.use_layer_norm, use_aug=args.use_aug,
+                                    feats_weighting=args.weight_type is not None, lr=args.lr, n_epochs=args.n_epochs,
+                                    batch_size=args.batch_size, resfile=args.resfile)
+
+        # all_res = {k: [*res_avg[k], *res_loss[k]] for k in res_avg}
+        # all_res = pd.DataFrame(all_res).T
+        # all_res.columns = ["full_score_avg_fw", "partial_score_mean_avg_fw", "partial_score_std_avg_fw",
+        #                    "full_score_loss_fw", "partial_score_mean_loss_fw", "partial_score_std_loss_fw"]
+        # all_res.to_csv("all_res_different_fw.csv")
+        #
+        # full_scores_avg = [res_avg[k][0] for k in res_avg]
+        # full_scores_loss = [res_loss[k][0] for k in res_loss]
+        #
+        # partial_scores_avg = [res_avg[k][1] for k in res_avg]
+        # partial_scores_loss = [res_loss[k][1] for k in res_loss]
+        #
+        # full_scores = [*full_scores_avg, *full_scores_loss]
+        # partial_scores = [*partial_scores_avg, *partial_scores_loss]
+        # raw_datasets = [*res_avg.keys(), *res_loss.keys()]
+        # fw = ["avg"] * len(res_avg) + ["loss"] * len(res_loss)
+        # title_datasets = [f"{d} ({fw[i]})" for i, d in enumerate(raw_datasets)]
+
+        # plot_res(runs_names=title_datasets, raw_datasets_names=raw_datasets, labels=fw, full_results=full_scores,
+        #          partial_results=partial_scores, savefile="all_res_different_fw.png")

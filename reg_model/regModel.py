@@ -109,6 +109,9 @@ class RegModel(torch.nn.Module):
             n_epochs: int = 300, verbose: bool = True, early_stopping: int = 30,
             reg_type: str = "l1", alpha: float = 1, feats_weighting: bool = False,
             weight_type: str = 0):
+        if weight_type is None:
+            feats_weighting = False
+
         print("alpha: ", alpha)
         optimizer = Adam(self.parameters(), lr=lr)
         min_val_loss = np.inf
