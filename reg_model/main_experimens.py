@@ -272,7 +272,6 @@ def run_grid_search(dataset: str, search_space: dict, resfile: str, **kwargs):
 
     len_all_confs = len(all_confs)
 
-
     for i, vals in enumerate(all_confs):
         # if dataset.lower() == 'parkinson':
         #     if i < 457:
