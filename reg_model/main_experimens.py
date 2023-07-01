@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser()
 
 str2bool = lambda x: (str(x).lower() == "true")
 
-parser.add_argument("--dataset", type=str, default="Wifi")
+parser.add_argument("--dataset", type=str, default="Iris")
 parser.add_argument("--full", type=str2bool, default=True)
 parser.add_argument("--verbose", type=str2bool, default=False)
 
@@ -39,9 +39,9 @@ parser.add_argument("--batch_size", type=int, default=32)
 parser.add_argument("--n_epochs", type=int, default=300)
 parser.add_argument("--early_stopping", type=int, default=30)
 
-parser.add_argument("--resfile", type=str, default=None)
+parser.add_argument("--resfile", type=str, default='tmp.csv')
 
-parser.add_argument("--run_grid", type=str2bool, default=False)
+parser.add_argument("--run_grid", type=str2bool, default=True)
 
 args = parser.parse_args()
 
@@ -90,6 +90,7 @@ def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: Dat
         score = model.score(new_val_X, val_y)
         scores_partial.append(score)
 
+    """
     if resfile is not None:
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         print("Results saved to:", resfile)
@@ -111,6 +112,7 @@ def run_model(train_loader: DataLoader, val_loader: DataLoader, test_loader: Dat
                               f"{np.mean(scores_partial)} +- {np.std(scores_partial)}"]) + "\n")
 
         # return to_save
+    """
 
     return model_score_full, np.mean(scores_partial).round(3), np.std(scores_partial).round(3)
 
@@ -222,12 +224,6 @@ def main_one_run(dataset: str, verbose: bool = False, **kwargs):
     full_score, partial_score_mean, partial_score_std = run_model(train_loader, val_loader, test_loader,
                                                                   dataset_name=dataset, **kwargs, verbose=verbose)
 
-    # full_type1, partial_type1_mean, partial_type1_std = run_model(train_loader, val_loader, test_loader, 0,
-    #                                                               dataset_name=dataset, **kwargs)
-
-    # print(f"Full score:\t{full_type0} / {full_type1}")
-    # print(f"Partial score:\t{partial_type0_mean} +- {partial_type0_std} / {partial_type1_mean} +- {partial_type1_std}")
-
     # if verbose:
 
     print(f"Full score:\t{full_score}")
@@ -265,10 +261,56 @@ def run_many_datasets(datasets: list = None, **kwargs):
 def run_grid_search(dataset: str, search_space: dict, resfile: str, **kwargs):
     all_confs = list(product(*search_space.values()))
 
+    if os.path.isfile(resfile):
+        prev_file = pd.read_csv(resfile)
+        last_conf_num = prev_file["conf_num"].max()
+
+    else:
+        last_conf_num = -1
+
+    print("last_conf_num:", last_conf_num)
+
+    len_all_confs = len(all_confs)
+
+
     for i, vals in enumerate(all_confs):
+        # if dataset.lower() == 'parkinson':
+        #     if i < 457:
+        #         print(f"Skipping conf {i + 1}/{len(all_confs)}!")
+        #         continue
+        #
+        # elif dataset.lower() == 'accent':
+        #     if i < 1633:
+        #         print(f"Skipping conf {i + 1}/{len(all_confs)}!")
+        #         continue
+        #
+        # elif dataset.lower() == 'iris':
+        #     if i < 1497:
+        #         print(f"Skipping conf {i + 1}/{len(all_confs)}!")
+        #         continue
+
+        if i < last_conf_num:
+            print(f"Skipping conf {i + 1}/{len_all_confs}!")
+            continue
+
         kwargs.update({k: v for k, v in zip(search_space.keys(), vals)})
-        main_one_run(dataset, resfile=resfile, **kwargs)
-        print(f"Done conf {i + 1}/{len(all_confs)}!")
+
+        full_score, partial_score_mean, partial_score_std = main_one_run(dataset, resfile=resfile, **kwargs)
+
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        print("Results saved to:", resfile)
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+
+        if not os.path.isfile(resfile):
+            f = open(resfile, "a")
+            f.write(','.join(["dataset", "conf_num", *list(search_space.keys()), "full_score", "partial_score"]) + "\n")
+            f.close()
+
+        with open(resfile, "a") as f:
+            f.write(','.join([dataset, str(i + 1), *[str(v) for v in vals], str(full_score),
+                              f"{partial_score_mean} +- {partial_score_std}"]) + "\n")
+
+        print(f"Done conf {i + 1}/{len_all_confs}!")
 
 
 if __name__ == '__main__':

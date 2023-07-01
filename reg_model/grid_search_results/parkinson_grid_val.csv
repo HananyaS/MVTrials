@@ -1,0 +1,5 @@
+dataset,conf_num,reg_type,weight_type,alpha,use_layer_norm,use_aug,lr,batch_size,full_score,partial_score
+Parkinson,1,l1,None,0,True,True,0.001,32,0.96875,0.962 +- 0.013
+Parkinson,2,l1,None,0,True,True,0.001,64,0.96875,0.959 +- 0.015
+Parkinson,3,l1,None,0,True,True,0.01,32,1.0,0.984 +- 0.016
+Parkinson,4,l1,None,0,True,True,0.01,64,0.96875,0.959 +- 0.017
