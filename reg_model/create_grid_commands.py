@@ -1,4 +1,4 @@
-datasets = ["Parkinson", "Accent", "Iris"]
+datasets = ["Accent", "Wifi"]
 commands_file = "grid_search_commands"
 
 with open(commands_file, "w") as f:

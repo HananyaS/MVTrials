@@ -1,3 +1,4 @@
+import pandas as pd
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -54,6 +55,12 @@ class RegModel(torch.nn.Module):
             return self(x)[0]
 
     def score(self, x, y, metric="accuracy"):
+        if isinstance(x, pd.DataFrame):
+            x = torch.from_numpy(x.values)
+
+        if isinstance(y, pd.DataFrame):
+            y = torch.from_numpy(y.values)
+
         if metric == "accuracy":
             with torch.no_grad():
                 return (self.predict(x).argmax(dim=1) == y).float().mean().item()
