@@ -1,0 +1,1 @@
+{"reg_type": "max", "weight_type": "loss", "alpha": 0.0, "use_layer_norm": true, "use_aug": true, "lr": 0.1, "batch_size": 64}
