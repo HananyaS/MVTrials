@@ -1,21 +1,21 @@
-python main_experimens.py --run_grid True --dataset Iris --resfile grid_search_results/iris_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Iris --resfile grid_search_results/iris_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Iris --resfile grid_search_results/iris_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Iris --resfile grid_search_results/iris_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Iris --resfile grid_search_results/iris_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Iris --resfile grid_search_results/iris_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Iris --resfile grid_search_results/iris_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Accent --resfile grid_search_results/accent_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Accent --resfile grid_search_results/accent_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Accent --resfile grid_search_results/accent_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Accent --resfile grid_search_results/accent_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Accent --resfile grid_search_results/accent_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Accent --resfile grid_search_results/accent_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Accent --resfile grid_search_results/accent_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Ecoli --resfile grid_search_results/ecoli_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Ecoli --resfile grid_search_results/ecoli_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Ecoli --resfile grid_search_results/ecoli_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Ecoli --resfile grid_search_results/ecoli_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Ecoli --resfile grid_search_results/ecoli_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Ecoli --resfile grid_search_results/ecoli_grid_val.csv 
-python main_experimens.py --run_grid True --dataset Ecoli --resfile grid_search_results/ecoli_grid_val.csv 
+python main_experimens.py --run_grid True --dataset Parkinson --resfile grid_search_results/parkinson_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Parkinson --resfile grid_search_results/parkinson_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Parkinson --resfile grid_search_results/parkinson_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Parkinson --resfile grid_search_results/parkinson_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Parkinson --resfile grid_search_results/parkinson_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Parkinson --resfile grid_search_results/parkinson_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Parkinson --resfile grid_search_results/parkinson_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Banknote --resfile grid_search_results/banknote_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Banknote --resfile grid_search_results/banknote_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Banknote --resfile grid_search_results/banknote_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Banknote --resfile grid_search_results/banknote_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Banknote --resfile grid_search_results/banknote_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Banknote --resfile grid_search_results/banknote_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Banknote --resfile grid_search_results/banknote_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Wifi --resfile grid_search_results/wifi_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Wifi --resfile grid_search_results/wifi_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Wifi --resfile grid_search_results/wifi_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Wifi --resfile grid_search_results/wifi_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Wifi --resfile grid_search_results/wifi_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Wifi --resfile grid_search_results/wifi_grid_val.csv --run_ts False --run grid True
+python main_experimens.py --run_grid True --dataset Wifi --resfile grid_search_results/wifi_grid_val.csv --run_ts False --run grid True
