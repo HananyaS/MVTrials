@@ -20,12 +20,12 @@ class Net(nn.Module):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.to(self.device)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor, tp: int = 1):
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
 
-        return self.softmax(x)
+        return self.softmax(x / tp)
 
     def predict(self, x):
         with torch.no_grad():
@@ -43,15 +43,15 @@ class TSFrameworkMS(nn.Module):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.to(self.device)
 
-    def forward(self, x: torch.Tensor):
-        return self.teacher(x), [student(x) for student in self.students]
+    def forward(self, x: torch.Tensor, tps: float = 1, tpt: float = 1):
+        return self.teacher(x, tpt), [student(x, tps) for student in self.students]
 
-    def predict(self, x: torch.Tensor):
+    def predict(self, x: torch.Tensor, tps: float = 1, tpt: float = 1):
         with torch.no_grad():
-            return self.forward(x)
+            return self.forward(x, tps, tpt)
 
-    def predict_teacher(self, x: torch.Tensor):
-        return self.predict(x)[0]
+    def predict_teacher(self, x: torch.Tensor, tpt: float = 1):
+        return self.predict(x, tpt=tpt)[0]
 
     def score(self, loader: DataLoader):
         with torch.no_grad():
@@ -160,7 +160,6 @@ class TSFrameworkMS(nn.Module):
                 test_loader.dataset, batch_size=1, shuffle=False
             )
             test_loader_copy.dataset.X[:, i] = test_loader_copy.dataset.X[:, i].mean()
-
             partial_test_acc.append(self.score(test_loader_copy))
 
         return full_test_acc, np.mean(partial_test_acc), np.std(partial_test_acc)
@@ -175,15 +174,15 @@ class TSFrameworkOS(nn.Module):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.to(self.device)
 
-    def forward(self, x: torch.Tensor):
-        return self.teacher(x), self.student(x)
+    def forward(self, x: torch.Tensor, tps: float = 1, tpt: float = 1):
+        return self.teacher(x, tpt), self.student(x, tps)
 
-    def predict(self, x: torch.Tensor):
+    def predict(self, x: torch.Tensor, tps: float = 1, tpt: float = 1):
         with torch.no_grad():
-            return self.forward(x)
+            return self.forward(x, tps, tpt)
 
-    def predict_teacher(self, x: torch.Tensor):
-        return self.predict(x)[0]
+    def predict_teacher(self, x: torch.Tensor, tpt: float = 1):
+        return self.predict(x, tpt=tpt)[0]
 
     def score(self, loader: DataLoader):
         with torch.no_grad():
@@ -252,7 +251,7 @@ class TSFrameworkOS(nn.Module):
                 x1 = self.augment(X, cols_to_drop=feats_to_drop[: X.shape[0]])
                 x2 = self.augment(X, cols_to_drop=feats_to_drop[X.shape[0] :])
 
-                [s1, t1], [s2, t2] = self.forward(x1), self.forward(x2)
+                [s1, t1], [s2, t2] = self.forward(x1, tps, tpt), self.forward(x2, tps, tpt)
 
                 student_loss = (
                     criteria(s1, t2) + criteria(s2, t1)

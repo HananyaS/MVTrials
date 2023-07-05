@@ -33,7 +33,7 @@ parser = argparse.ArgumentParser()
 
 str2bool = lambda x: (str(x).lower() == "true")
 
-parser.add_argument("--dataset", type=str, default="Accent")
+parser.add_argument("--dataset", type=str, default="Iris")
 parser.add_argument("--full", type=str2bool, default=True)
 parser.add_argument("--verbose", type=str2bool, default=False)
 
@@ -52,8 +52,8 @@ parser.add_argument("--early_stopping", type=int, default=30)
 parser.add_argument("--resfile", type=str, default="tmp.csv")
 
 parser.add_argument("--run_grid", type=str2bool, default=False)
-parser.add_argument("--run_ts", type=str2bool, default=False)
-parser.add_argument("--full_test", type=str2bool, default=True)
+parser.add_argument("--run_ts", type=str2bool, default=True)
+parser.add_argument("--full_test", type=str2bool, default=False)
 
 parser.add_argument("--load_params", type=str2bool, default=True)
 
@@ -102,11 +102,11 @@ def run_model(
     val_X = val_loader.dataset.X
     val_y = val_loader.dataset.y
 
-    model_score_full = model.score(val_X, val_y)
+    val_model_score_full = model.score(val_X, val_y)
 
     print()
 
-    scores_partial = []
+    val_scores_partial = []
 
     # for j in range(test_X.shape[1]):
     for j in range(val_X.shape[1]):
@@ -114,8 +114,8 @@ def run_model(
         new_val_X = val_X.clone()
         new_val_X[:, j] = 0
 
-        score = model.score(new_val_X, val_y)
-        scores_partial.append(score)
+        val_score = model.score(new_val_X, val_y)
+        val_scores_partial.append(val_score)
 
     """
     if resfile is not None:
@@ -141,10 +141,32 @@ def run_model(
         # return to_save
     """
 
-    return model, (
-        model_score_full,
-        np.mean(scores_partial).round(3),
-        np.std(scores_partial).round(3),
+    train_X = train_loader.dataset.X
+    train_y = train_loader.dataset.y
+
+    train_model_score_full = model.score(train_X, train_y)
+
+    train_scores_partial = []
+
+    for j in range(train_X.shape[1]):
+        new_train_X = train_X.clone()
+        new_train_X[:, j] = 0
+
+        train_score = model.score(new_train_X, train_y)
+        train_scores_partial.append(train_score)
+
+    return (
+        model,
+        (
+            train_model_score_full,
+            np.mean(train_scores_partial).round(3),
+            np.std(train_scores_partial).round(3),
+        ),
+        (
+            val_model_score_full,
+            np.mean(val_scores_partial).round(3),
+            np.std(val_scores_partial).round(3),
+        ),
     )
 
 
@@ -282,16 +304,23 @@ def main(resfile: str = "full_results.csv"):
 def main_one_run(
     dataset: str, verbose: bool = False, full_test: bool = False, **kwargs
 ):
-    if "use_aug" in kwargs:
-        use_aug = kwargs.pop("use_aug")
-    else:
-        use_aug = False
+    # if "use_aug" in kwargs:
+    #     use_aug = kwargs.pop("use_aug")
+    # else:
+    #     use_aug = False
+
+    use_aug = kwargs.pop("use_aug", False)
+    batch_size = kwargs.pop("batch_size", 32)
 
     train_loader, val_loader, test_loader = get_split_data(
-        dataset, use_aug=use_aug, batch_size=kwargs.pop("batch_size")
+        dataset, use_aug=use_aug, batch_size=batch_size
     )
 
-    model, (full_score, partial_score_mean, partial_score_std) = run_model(
+    (
+        model,
+        (train_full_score, train_partial_score_mean, train_partial_score_std),
+        (val_full_score, val_partial_score_mean, val_partial_score_std),
+    ) = run_model(
         train_loader,
         val_loader,
         test_loader,
@@ -301,18 +330,52 @@ def main_one_run(
     )
 
     if verbose:
-        print(f"Full score:\t{full_score}")
+        print(f"Train full score:\t{train_full_score}")
+        print(
+            f"Train partial score:\t{train_partial_score_mean} +- {train_partial_score_std}"
+        )
+        print(f"Val full score:\t{val_full_score}")
+        print(
+            f"Val partial score:\t{val_partial_score_mean} +- {val_partial_score_std}"
+        )
         print(f"XGBoost full score:\t{XGB_FULL_RES[dataset]}")
-        print(f"Partial score:\t{partial_score_mean} +- {partial_score_std}")
         print(f"XGBoost partial score:\t{XGB_PARTIAL_RES[dataset]}")
 
     if full_test:
         xgb = XGBClassifier()
         xgb.fit(train_loader.dataset.X, train_loader.dataset.y)
 
-        run_full_test(model, xgb, test_loader, dataset_name=dataset)
+        train_loader_no_aug, val_loader_no_aug, test_loader_no_aug = get_split_data(
+            dataset, use_aug=False, batch_size=batch_size
+        )
 
-    return full_score, partial_score_mean, partial_score_std
+        dn_kwargs = {
+            "reg_type": "l2",
+            "weight_type": "None",
+            "alpha": 0,
+            "use_layer_norm": False,
+            "lr": kwargs["lr"],
+        }
+
+        dn_model, *_ = run_model(
+            train_loader_no_aug,
+            val_loader_no_aug,
+            test_loader_no_aug,
+            dataset_name=dataset,
+            **dn_kwargs,
+            verbose=False,
+        )
+
+        run_full_test(model, dn_model, xgb, test_loader, dataset_name=dataset)
+
+    return (
+        (train_full_score, train_partial_score_mean, train_partial_score_std),
+        (
+            val_full_score,
+            val_partial_score_mean,
+            val_partial_score_std,
+        ),
+    )
 
 
 # def run_many_datasets(datasets: list = None, save_res: bool = False, **kwargs):
@@ -354,30 +417,17 @@ def run_grid_search(dataset: str, search_space: dict, resfile: str, **kwargs):
     len_all_confs = len(all_confs)
 
     for i, vals in enumerate(all_confs):
-        # if dataset.lower() == 'parkinson':
-        #     if i < 457:
-        #         print(f"Skipping conf {i + 1}/{len(all_confs)}!")
-        #         continue
-        #
-        # elif dataset.lower() == 'accent':
-        #     if i < 1633:
-        #         print(f"Skipping conf {i + 1}/{len(all_confs)}!")
-        #         continue
-        #
-        # elif dataset.lower() == 'iris':
-        #     if i < 1497:
-        #         print(f"Skipping conf {i + 1}/{len(all_confs)}!")
-        #         continue
-
         if i < last_conf_num:
             print(f"Skipping conf {i + 1}/{len_all_confs}!")
             continue
 
         kwargs.update({k: v for k, v in zip(search_space.keys(), vals)})
 
-        full_score, partial_score_mean, partial_score_std = main_one_run(
-            dataset, resfile=resfile, **kwargs
-        )
+        (train_full_score, train_partial_score_mean, train_partial_score_std), (
+            val_full_score,
+            val_partial_score_mean,
+            val_partial_score_std,
+        ) = main_one_run(dataset, resfile=resfile, **kwargs, full_test=False)
 
         print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         print("Results saved to:", resfile)
@@ -391,8 +441,10 @@ def run_grid_search(dataset: str, search_space: dict, resfile: str, **kwargs):
                         "dataset",
                         "conf_num",
                         *list(search_space.keys()),
-                        "full_score",
-                        "partial_score",
+                        "train_full_score",
+                        "train_partial_score",
+                        "val_full_score",
+                        "val_partial_score",
                     ]
                 )
                 + "\n"
@@ -406,8 +458,10 @@ def run_grid_search(dataset: str, search_space: dict, resfile: str, **kwargs):
                         dataset,
                         str(i + 1),
                         *[str(v) for v in vals],
-                        str(full_score),
-                        f"{partial_score_mean} +- {partial_score_std}",
+                        str(train_full_score),
+                        f"{train_partial_score_mean} +- {train_partial_score_std}",
+                        str(val_full_score),
+                        f"{val_partial_score_mean} +- {val_partial_score_std}",
                     ]
                 )
                 + "\n"
@@ -418,10 +472,11 @@ def run_grid_search(dataset: str, search_space: dict, resfile: str, **kwargs):
 
 def run_full_test(
     model: nn.Module,
+    dn: nn.Module,
     xgb: XGBClassifier,
     test_loader: DataLoader,
     dataset_name: str,
-    max_combinations: int = 10,
+    max_combinations: int = 30,
     plot: bool = True,
 ):
     model.eval()
@@ -431,14 +486,15 @@ def run_full_test(
 
     model_scores = []
     xgboost_scores = []
+    dn_scores = []
 
     for n_feats in n_feats_to_train_with:
         model_scores_per_n_feat = []
         xgboost_scores_per_n_feat = []
+        dn_scores_per_n_feat = []
+        print(f"Removing {test_X.shape[1] - n_feats}/{test_X.shape[1]} features")
 
         for i in range(min(max_combinations, int(comb(test_X.shape[1], n_feats)))):
-            print(f"Removing {n_feats} features, combination {i + 1}")
-
             # create a copy of the test set
             X_clone = test_X.clone()
 
@@ -451,6 +507,7 @@ def run_full_test(
 
             xgboost_scores_per_n_feat.append(xgb.score(X_clone, test_y))
             model_scores_per_n_feat.append(model.score(X_clone, test_y))
+            dn_scores_per_n_feat.append(dn.score(X_clone, test_y))
 
         model_scores.append(
             (np.mean(model_scores_per_n_feat), np.std(model_scores_per_n_feat))
@@ -458,6 +515,7 @@ def run_full_test(
         xgboost_scores.append(
             (np.mean(xgboost_scores_per_n_feat), np.std(xgboost_scores_per_n_feat))
         )
+        dn_scores.append((np.mean(dn_scores_per_n_feat), np.std(dn_scores_per_n_feat)))
 
     if plot:
         # plot the model and xgboost scores with std
@@ -467,6 +525,9 @@ def run_full_test(
 
         xgboost_scores_mean = [s[0] for s in xgboost_scores]
         xgboost_scores_std = [s[1] for s in xgboost_scores]
+
+        dn_scores_mean = [s[0] for s in dn_scores]
+        dn_scores_std = [s[1] for s in dn_scores]
 
         plt.clf()
         plt.plot(n_feats_to_train_with, model_scores_mean, label="Model")
@@ -485,13 +546,23 @@ def run_full_test(
             alpha=0.2,
         )
 
+        plt.plot(n_feats_to_train_with, dn_scores_mean, label="Neural Network")
+        plt.fill_between(
+            n_feats_to_train_with,
+            np.array(dn_scores_mean) - np.array(dn_scores_std),
+            np.array(dn_scores_mean) + np.array(dn_scores_std),
+            alpha=0.2,
+        )
+
         plt.xlabel("Number of features")
         plt.ylabel("Accuracy")
 
-        plt.title(f"Feature removal test on {dataset_name}")
+        plt.title(f"{dataset_name}")
 
         plt.legend()
-        plt.show()
+        os.makedirs("removal_feats_plots", exist_ok=True)
+        plt.savefig(f"removal_feats_plots/{dataset_name.lower()}.png")
+        # plt.show()
 
 
 def run_teacher_student(dataset: str, ts_type: str = "OS", **kwargs):
@@ -539,7 +610,7 @@ if __name__ == "__main__":
         search_space = {
             "reg_type": ["l1", "l2", "max", "var"],
             "weight_type": [None, "loss", "avg", "mult"],
-            "alpha": [0, 0.5, 1, 2, 5],
+            "alpha": [0, 0.5, 1],
             "use_layer_norm": [True, False],
             "use_aug": [True, False],
             "lr": [0.001, 0.01, 0.1],

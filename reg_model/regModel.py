@@ -72,8 +72,13 @@ class RegModel(torch.nn.Module):
         else:
             raise NotImplementedError
 
-    def calc_partial_losses(self, X: torch.Tensor, y: torch.Tensor, reg_type: str = "l2",
-                            feats_weights: torch.Tensor = None):
+    def calc_partial_losses(
+        self,
+        X: torch.Tensor,
+        y: torch.Tensor,
+        reg_type: str = "l2",
+        feats_weights: torch.Tensor = None,
+    ):
         assert reg_type in ["l1", "l2", "max", "var"]
 
         y_pred_full, _ = self(X)
@@ -87,35 +92,89 @@ class RegModel(torch.nn.Module):
 
         y_preds_partial = torch.stack(y_preds_partial, dim=1)
 
-        loss_full = nn.CrossEntropyLoss(reduction='sum')(y_pred_full, y)
+        loss_full = nn.CrossEntropyLoss(reduction="sum")(y_pred_full, y)
 
-        partial_criteria = nn.L1Loss(reduction='sum') if reg_type in ["l1", "max"] else nn.MSELoss(reduction='sum')
+        partial_criteria = (
+            nn.L1Loss(reduction="sum")
+            if reg_type in ["l1", "max"]
+            else nn.MSELoss(reduction="sum")
+        )
         losses_partial = np.array(
-            [partial_criteria(y_preds_partial[:, i], y_pred_full).item() for i in range(X.shape[1])])
+            [
+                partial_criteria(y_preds_partial[:, i], y_pred_full).item()
+                for i in range(X.shape[1])
+            ]
+        )
 
         if reg_type in ["l1", "l2"]:
             loss_partial = sum(
-                [partial_criteria(y_preds_partial[:, i], y_pred_full) * feats_weights[i] for i in range(X.shape[1])])
+                [
+                    partial_criteria(y_preds_partial[:, i], y_pred_full)
+                    * feats_weights[i]
+                    for i in range(X.shape[1])
+                ]
+            )
 
         elif reg_type == "max":
             loss_partial = max(
-                [partial_criteria(y_preds_partial[:, i], y_pred_full) * feats_weights[i] for i in
-                 range(X.shape[1])])
+                [
+                    partial_criteria(y_preds_partial[:, i], y_pred_full)
+                    * feats_weights[i]
+                    for i in range(X.shape[1])
+                ]
+            )
 
         elif reg_type == "var":
             loss_partial = sum(
-                [partial_criteria(y_preds_partial[:, i], y_preds_partial[:, j]) for i in range(X.shape[1]) for j in
-                 range(i)]) / (X.shape[1] * (X.shape[1] - 1) / 2)
+                [
+                    partial_criteria(y_preds_partial[:, i], y_preds_partial[:, j])
+                    for i in range(X.shape[1])
+                    for j in range(i)
+                ]
+            ) / (X.shape[1] * (X.shape[1] - 1) / 2)
 
         else:
             raise NotImplementedError
 
         return loss_full, loss_partial, losses_partial
 
-    def fit(self, train_loader: DataLoader, val_loader: DataLoader, dataset_name: str, lr: float = 1e-2,
-            n_epochs: int = 300, verbose: bool = True, early_stopping: int = 30,
-            reg_type: str = "l1", alpha: float = 1, feats_weighting: bool = False,
-            weight_type: str = 0):
+    @staticmethod
+    def update_feat_weights(
+        prev_weights: torch.Tensor,
+        losses: torch.Tensor,
+        weight_type: str,
+    ):
+        if weight_type == "avg":
+            norm_losses = losses_partial / losses_partial.sum()
+            losses_weight_feats = losses_weight_feats + norm_losses
+
+        elif weight_type == "mult":
+            losses_weight_feats = losses_weight_feats.detach() * losses_partial
+
+        elif weight_type == "loss":
+            losses_weight_feats = losses_partial**2
+
+        else:
+            raise NotImplementedError
+
+        losses_weight_feats = losses_weight_feats / losses_weight_feats.sum()
+
+        return losses_weight_feats
+
+    def fit(
+        self,
+        train_loader: DataLoader,
+        val_loader: DataLoader,
+        dataset_name: str,
+        lr: float = 1e-2,
+        n_epochs: int = 300,
+        verbose: bool = True,
+        early_stopping: int = 30,
+        reg_type: str = "l1",
+        alpha: float = 1,
+        feats_weighting: bool = False,
+        weight_type: str = 0,
+    ):
         if weight_type is None:
             feats_weighting = False
 
@@ -140,63 +199,45 @@ class RegModel(torch.nn.Module):
             for i, (X, y) in enumerate(train_loader):
                 optimizer.zero_grad()
 
-                loss_full, loss_partial, losses_partial = self.calc_partial_losses(X, y, reg_type, losses_weight_feats)
+                loss_full, loss_partial, losses_partial = self.calc_partial_losses(
+                    X, y, reg_type, losses_weight_feats
+                )
 
                 loss = loss_full + alpha * loss_partial
-
-                # y_pred_full, _ = self(X)
-                # loss_full = bce_criterion(y_pred_full, y)
-
-                # diffs_partial = torch.zeros(X.shape[1])
-                # reconstruction_partial = torch.zeros(X.shape[1])
-
-                # for f in range(X.shape[1]):
-                #     X_f = X.clone()
-                #     X_f[:, f] = 0
-                #     y_pred_f, reconstruction_f = self(X_f)
-                #
-                #     diffs_partial[f] = diff_criterion(y_pred_f, y_pred_full) * losses_weight_feats[f].item()
-                #     reconstruction_partial[f] = l2_criterion(reconstruction_f[:, f], X[:, f]) * losses_weight_feats[
-                #         f].item()
-                #
-                #     if f == 0:
-                #         loss_partial = mse_criterion(y_pred_f, y_pred_full)
-                #     else:
-                #         loss_partial += mse_criterion(y_pred_f, y_pred_full)
-                #
-                # if reg_type == 'max':
-                #     loss_partial = diffs_partial.max()
-                #
-                # else:
-                #     loss_partial = diffs_partial.mean()
-                #
-                # loss_rec = reconstruction_partial.mean()
-                #
-                # loss = loss_full.float() + alpha * loss_partial.float() + beta * loss_rec.float()
-                # epoch_loss_partial_train.append(alpha * loss_partial.item() + beta * loss_rec.item())
 
                 epoch_loss_full_train.append(loss_full.item())
                 loss.backward()
                 optimizer.step()
 
                 if feats_weighting:
-                    if weight_type == 'avg':
-                        norm_losses = losses_partial / losses_partial.sum()
-                        losses_weight_feats = losses_weight_feats + norm_losses
+                    # if weight_type == "avg":
+                    #     norm_losses = losses_partial / losses_partial.sum()
+                    #     losses_weight_feats = losses_weight_feats + norm_losses
+                    #
+                    # elif weight_type == "mult":
+                    #     losses_weight_feats = (
+                    #         losses_weight_feats.detach() * losses_partial
+                    #     )
+                    #
+                    # elif weight_type == "loss":
+                    #     losses_weight_feats = losses_partial**2
+                    #
+                    # else:
+                    #     raise NotImplementedError
+                    #
+                    # losses_weight_feats = (
+                    #     losses_weight_feats / losses_weight_feats.sum()
+                    # )
+                    losses_weight_feats = self.update_feat_weights(
+                        losses_weight_feats, losses_partial, weight_type
+                    )
 
-                    elif weight_type == 'mult':
-                        losses_weight_feats = losses_weight_feats.detach() * losses_partial
-
-                    elif weight_type == 'loss':
-                        losses_weight_feats = losses_partial ** 2
-
-                    else:
-                        raise NotImplementedError
-
-                    losses_weight_feats = losses_weight_feats / losses_weight_feats.sum()
-
-            full_loss_train.append(sum(epoch_loss_full_train) / len(train_loader.dataset))
-            partial_loss_train.append(sum(epoch_loss_partial_train) / len(train_loader.dataset))
+            full_loss_train.append(
+                sum(epoch_loss_full_train) / len(train_loader.dataset)
+            )
+            partial_loss_train.append(
+                sum(epoch_loss_partial_train) / len(train_loader.dataset)
+            )
 
             train_X, train_y = train_loader.dataset.X, train_loader.dataset.y
             val_X, val_y = val_loader.dataset.X, val_loader.dataset.y
@@ -226,7 +267,9 @@ class RegModel(torch.nn.Module):
                     #
                     # loss_rec = reconstruction_partial.mean()
 
-                    loss_full, loss_partial, _ = self.calc_partial_losses(X, y, reg_type, losses_weight_feats)
+                    loss_full, loss_partial, _ = self.calc_partial_losses(
+                        X, y, reg_type, losses_weight_feats
+                    )
 
                     epoch_loss_partial_val.append(loss_partial.item())
 
@@ -234,7 +277,9 @@ class RegModel(torch.nn.Module):
 
                 full_loss_val.append(sum(epoch_loss_full_val) / len(val_loader.dataset))
 
-                partial_loss_val.append(sum(epoch_loss_partial_val) / len(val_loader.dataset))
+                partial_loss_val.append(
+                    sum(epoch_loss_partial_val) / len(val_loader.dataset)
+                )
                 last_loss_val = full_loss_val[-1] + partial_loss_val[-1]
 
                 if last_loss_val < min_val_loss:
@@ -261,16 +306,30 @@ class RegModel(torch.nn.Module):
                 print(f"\tTrain Acc: {train_acc[-1]:.3f}")
                 print(f"\tTest Acc: {val_acc[-1]:.3f}")
 
-        plt.plot(list(range(1, 1 + len(full_loss_train))), full_loss_train, label="Full Loss Train")
-        plt.plot(list(range(1, 1 + len(full_loss_val))), full_loss_val, label="Full Loss Val")
+        plt.plot(
+            list(range(1, 1 + len(full_loss_train))),
+            full_loss_train,
+            label="Full Loss Train",
+        )
+        plt.plot(
+            list(range(1, 1 + len(full_loss_val))), full_loss_val, label="Full Loss Val"
+        )
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
         plt.title(f"Full Loss - {dataset_name}")
         plt.legend()
         # plt.show()
 
-        plt.plot(list(range(1, 1 + len(partial_loss_train))), partial_loss_train, label="Partial Loss Train")
-        plt.plot(list(range(1, 1 + len(partial_loss_val))), partial_loss_val, label="Partial Loss Val")
+        plt.plot(
+            list(range(1, 1 + len(partial_loss_train))),
+            partial_loss_train,
+            label="Partial Loss Train",
+        )
+        plt.plot(
+            list(range(1, 1 + len(partial_loss_val))),
+            partial_loss_val,
+            label="Partial Loss Val",
+        )
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
         plt.title(f"Partial Loss - {dataset_name}")

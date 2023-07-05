@@ -1,0 +1,7 @@
+python main_experimens.py --dataset Ecoli --run_grid False --run_ts False
+python main_experimens.py --dataset Banknote --run_grid False --run_ts False
+python main_experimens.py --dataset Iris --run_grid False --run_ts False
+python main_experimens.py --dataset Wine --run_grid False --run_ts False
+python main_experimens.py --dataset Parkinson --run_grid False --run_ts False
+python main_experimens.py --dataset Accent --run_grid False --run_ts False
+python main_experimens.py --dataset Wifi --run_grid False --run_ts False
