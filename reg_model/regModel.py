@@ -141,15 +141,15 @@ class RegModel(torch.nn.Module):
     @staticmethod
     def update_feat_weights(
         prev_weights: torch.Tensor,
-        losses: torch.Tensor,
+        losses_partial: torch.Tensor,
         weight_type: str,
     ):
         if weight_type == "avg":
             norm_losses = losses_partial / losses_partial.sum()
-            losses_weight_feats = losses_weight_feats + norm_losses
+            losses_weight_feats = prev_weights + norm_losses
 
         elif weight_type == "mult":
-            losses_weight_feats = losses_weight_feats.detach() * losses_partial
+            losses_weight_feats = prev_weights.detach() * losses_partial
 
         elif weight_type == "loss":
             losses_weight_feats = losses_partial**2

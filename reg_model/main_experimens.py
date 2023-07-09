@@ -24,6 +24,12 @@ from scipy.special import comb
 
 from matplotlib import pyplot as plt
 
+random_seed = 42
+
+np.random.seed(random_seed)
+torch.manual_seed(random_seed)
+torch.cuda.manual_seed(random_seed)
+
 warnings.filterwarnings("ignore")
 
 PROJECT_DIR = "."
@@ -33,7 +39,7 @@ parser = argparse.ArgumentParser()
 
 str2bool = lambda x: (str(x).lower() == "true")
 
-parser.add_argument("--dataset", type=str, default="Iris")
+parser.add_argument("--dataset", type=str, default="Accent")
 parser.add_argument("--full", type=str2bool, default=True)
 parser.add_argument("--verbose", type=str2bool, default=False)
 
@@ -52,8 +58,8 @@ parser.add_argument("--early_stopping", type=int, default=30)
 parser.add_argument("--resfile", type=str, default="tmp.csv")
 
 parser.add_argument("--run_grid", type=str2bool, default=False)
-parser.add_argument("--run_ts", type=str2bool, default=True)
-parser.add_argument("--full_test", type=str2bool, default=False)
+parser.add_argument("--run_ts", type=str2bool, default=False)
+parser.add_argument("--full_test", type=str2bool, default=True)
 
 parser.add_argument("--load_params", type=str2bool, default=True)
 
@@ -562,7 +568,7 @@ def run_full_test(
         plt.legend()
         os.makedirs("removal_feats_plots", exist_ok=True)
         plt.savefig(f"removal_feats_plots/{dataset_name.lower()}.png")
-        # plt.show()
+        plt.show()
 
 
 def run_teacher_student(dataset: str, ts_type: str = "OS", **kwargs):
