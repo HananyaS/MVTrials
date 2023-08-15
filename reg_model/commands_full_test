@@ -1,0 +1,9 @@
+python main_experimens.py --dropout 0 --dataset Iris --show_figs False
+python main_experimens.py --dropout 0 --dataset Parkinson --show_figs False
+python main_experimens.py --dropout 0 --dataset Wifi --show_figs False
+python main_experimens.py --dropout 0 --dataset Accent --show_figs False
+python main_experimens.py --dropout 0 --dataset Ecoli --show_figs False
+python main_experimens.py --dropout 0 --dataset Breast --show_figs False
+python main_experimens.py --dropout 0 --dataset Wine --show_figs False
+python main_experimens.py --dropout 0 --dataset Banknote --show_figs False
+

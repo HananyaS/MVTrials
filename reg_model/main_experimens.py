@@ -17,12 +17,17 @@ from dataset import Dataset
 from evaluations_plots import load_xgb_res
 
 from ts_model import TSFrameworkMS, TSFrameworkOS
+from taylorModel import TaylorModel
+from RFNet import RFNet
 
 from xgboost import XGBClassifier
 
 from scipy.special import comb
 
 from matplotlib import pyplot as plt
+
+from sklearn.linear_model import RidgeClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 random_seed = 42
 
@@ -39,7 +44,7 @@ parser = argparse.ArgumentParser()
 
 str2bool = lambda x: (str(x).lower() == "true")
 
-parser.add_argument("--dataset", type=str, default="Accent")
+parser.add_argument("--dataset", type=str, default="Climate")
 parser.add_argument("--full", type=str2bool, default=True)
 parser.add_argument("--verbose", type=str2bool, default=False)
 
@@ -51,6 +56,7 @@ parser.add_argument("--use_aug", type=str2bool, default=False)
 
 parser.add_argument("--lr", type=float, default=1e-2)
 parser.add_argument("--batch_size", type=int, default=32)
+parser.add_argument("--dropout", type=float, default=0)
 
 parser.add_argument("--n_epochs", type=int, default=300)
 parser.add_argument("--early_stopping", type=int, default=30)
@@ -62,6 +68,7 @@ parser.add_argument("--run_ts", type=str2bool, default=False)
 parser.add_argument("--full_test", type=str2bool, default=True)
 
 parser.add_argument("--load_params", type=str2bool, default=True)
+parser.add_argument("--show_figs", type=str2bool, default=True)
 
 args = parser.parse_args()
 
@@ -97,6 +104,7 @@ def run_model(
         int(train_loader.dataset.X.shape[1] * 0.75),
         len(train_loader.dataset.y.unique()),
         use_layer_norm=kwargs.pop("use_layer_norm", True),
+        dropout=kwargs.pop("dropout", 0.5),
     )
     model.fit(train_loader, val_loader, dataset_name=dataset_name, **kwargs)
 
@@ -111,6 +119,9 @@ def run_model(
     val_model_score_full = model.score(val_X, val_y)
 
     print()
+    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    print("Model alphas:\n", [a.item() for a in model.alphas])
+    print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
     val_scores_partial = []
 
@@ -118,7 +129,7 @@ def run_model(
     for j in range(val_X.shape[1]):
         # new_test_X = test_X.clone()
         new_val_X = val_X.clone()
-        new_val_X[:, j] = 0
+        new_val_X[:, j] = model.alphas[j]
 
         val_score = model.score(new_val_X, val_y)
         val_scores_partial.append(val_score)
@@ -156,7 +167,7 @@ def run_model(
 
     for j in range(train_X.shape[1]):
         new_train_X = train_X.clone()
-        new_train_X[:, j] = 0
+        new_train_X[:, j] = model.alphas[j]
 
         train_score = model.score(new_train_X, train_y)
         train_scores_partial.append(train_score)
@@ -335,7 +346,7 @@ def main_one_run(
         verbose=verbose,
     )
 
-    if verbose:
+    if not full_test:
         print(f"Train full score:\t{train_full_score}")
         print(
             f"Train partial score:\t{train_partial_score_mean} +- {train_partial_score_std}"
@@ -351,6 +362,12 @@ def main_one_run(
         xgb = XGBClassifier()
         xgb.fit(train_loader.dataset.X, train_loader.dataset.y)
 
+        rf = RandomForestClassifier()
+        rf.fit(train_loader.dataset.X, train_loader.dataset.y)
+
+        ridge = RidgeClassifier()
+        ridge.fit(train_loader.dataset.X, train_loader.dataset.y)
+
         train_loader_no_aug, val_loader_no_aug, test_loader_no_aug = get_split_data(
             dataset, use_aug=False, batch_size=batch_size
         )
@@ -361,6 +378,7 @@ def main_one_run(
             "alpha": 0,
             "use_layer_norm": False,
             "lr": kwargs["lr"],
+            "dropout": 0,
         }
 
         dn_model, *_ = run_model(
@@ -372,7 +390,36 @@ def main_one_run(
             verbose=False,
         )
 
-        run_full_test(model, dn_model, xgb, test_loader, dataset_name=dataset)
+        dropout_kwargs = dn_kwargs.copy()
+        dropout_kwargs["dropout"] = 0.5
+
+        dropout_model, *_ = run_model(
+            train_loader_no_aug,
+            val_loader_no_aug,
+            test_loader_no_aug,
+            dataset_name=dataset,
+            **dropout_kwargs,
+            verbose=False,
+        )
+
+        taylor_model = run_taylor_model(dataset)
+
+        rf_net_ce = run_rf_net(dataset, loss_type='cross_entropy')
+        rf_net_mse = run_rf_net(dataset, loss_type='mse')
+
+        run_full_test(
+            model,
+            dn_model,
+            xgb,
+            ridge,
+            dropout_model,
+            rf,
+            taylor_model,
+            rf_net_ce,
+            rf_net_mse,
+            test_loader,
+            dataset_name=dataset,
+        )
 
     return (
         (train_full_score, train_partial_score_mean, train_partial_score_std),
@@ -480,12 +527,21 @@ def run_full_test(
     model: nn.Module,
     dn: nn.Module,
     xgb: XGBClassifier,
+    ridge: RidgeClassifier,
+    dropout_model: nn.Module,
+    random_forest: RandomForestClassifier,
+    taylor_model: nn.Module,
+    rf_net_ce: nn.Module,
+    rf_net_mse: nn.Module,
     test_loader: DataLoader,
     dataset_name: str,
     max_combinations: int = 30,
     plot: bool = True,
 ):
     model.eval()
+    dn.eval()
+    dropout_model.eval()
+
     test_X, test_y = test_loader.dataset.X, test_loader.dataset.y
 
     n_feats_to_train_with = range(1, test_X.shape[1] + 1)
@@ -493,11 +549,24 @@ def run_full_test(
     model_scores = []
     xgboost_scores = []
     dn_scores = []
+    ridge_scores = []
+    dropout_scores = []
+    random_forest_scores = []
+    taylor_scores = []
+    rf_net_ce_scores = []
+    rf_net_mse_scores = []
 
     for n_feats in n_feats_to_train_with:
         model_scores_per_n_feat = []
         xgboost_scores_per_n_feat = []
         dn_scores_per_n_feat = []
+        ridge_scores_per_n_feat = []
+        dropout_scores_per_n_feat = []
+        random_forest_scores_per_n_feat = []
+        taylor_scores_per_n_feat = []
+        rf_net_ce_scores_per_n_feat = []
+        rf_net_mse_scores_per_n_feat = []
+
         print(f"Removing {test_X.shape[1] - n_feats}/{test_X.shape[1]} features")
 
         for i in range(min(max_combinations, int(comb(test_X.shape[1], n_feats)))):
@@ -509,34 +578,145 @@ def run_full_test(
             ).flatten()
 
             # remove random features
-            X_clone[:, random_feats_to_remove] = 0
+            X_clone[:, random_feats_to_remove] = np.nan
 
             xgboost_scores_per_n_feat.append(xgb.score(X_clone, test_y))
+
+            X_clone[:, random_feats_to_remove] = 0
+
             model_scores_per_n_feat.append(model.score(X_clone, test_y))
             dn_scores_per_n_feat.append(dn.score(X_clone, test_y))
+            ridge_scores_per_n_feat.append(ridge.score(X_clone, test_y))
+            dropout_scores_per_n_feat.append(dropout_model.score(X_clone, test_y))
+            random_forest_scores_per_n_feat.append(random_forest.score(X_clone, test_y))
+            taylor_scores_per_n_feat.append(taylor_model.score(X_clone, test_y))
+            rf_net_ce_scores_per_n_feat.append(rf_net_ce.score(X_clone, test_y))
+            rf_net_mse_scores_per_n_feat.append(rf_net_mse.score(X_clone, test_y))
 
         model_scores.append(
             (np.mean(model_scores_per_n_feat), np.std(model_scores_per_n_feat))
         )
+
+        dn_scores.append((np.mean(dn_scores_per_n_feat), np.std(dn_scores_per_n_feat)))
+
         xgboost_scores.append(
             (np.mean(xgboost_scores_per_n_feat), np.std(xgboost_scores_per_n_feat))
         )
-        dn_scores.append((np.mean(dn_scores_per_n_feat), np.std(dn_scores_per_n_feat)))
+
+        ridge_scores.append(
+            (np.mean(ridge_scores_per_n_feat), np.std(ridge_scores_per_n_feat))
+        )
+
+        dropout_scores.append(
+            (np.mean(dropout_scores_per_n_feat), np.std(dropout_scores_per_n_feat))
+        )
+
+        random_forest_scores.append(
+            (
+                np.mean(random_forest_scores_per_n_feat),
+                np.std(random_forest_scores_per_n_feat),
+            )
+        )
+
+        taylor_scores.append(
+            (
+                np.mean(taylor_scores_per_n_feat),
+                np.std(taylor_scores_per_n_feat),
+            )
+        )
+
+        rf_net_ce_scores.append(
+            (
+                np.mean(rf_net_ce_scores_per_n_feat),
+                np.std(rf_net_ce_scores_per_n_feat),
+            )
+        )
+
+        rf_net_mse_scores.append(
+            (
+                np.mean(rf_net_mse_scores_per_n_feat),
+                np.std(rf_net_mse_scores_per_n_feat),
+            )
+        )
 
     if plot:
         # plot the model and xgboost scores with std
 
-        model_scores_mean = [s[0] for s in model_scores]
-        model_scores_std = [s[1] for s in model_scores]
+        n_feats_to_train_with = list(n_feats_to_train_with)[::-1]
 
-        xgboost_scores_mean = [s[0] for s in xgboost_scores]
-        xgboost_scores_std = [s[1] for s in xgboost_scores]
+        c = 0
+        model_scores_mean = [s[0] for s in model_scores[::-1]] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+        model_scores_std = [s[1] for s in model_scores[::-1]] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
 
-        dn_scores_mean = [s[0] for s in dn_scores]
-        dn_scores_std = [s[1] for s in dn_scores]
+        dn_scores_mean = [s[0] for s in dn_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+        dn_scores_std = [s[1] for s in dn_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+
+        xgboost_scores_mean = [s[0] for s in xgboost_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+        xgboost_scores_std = [s[1] for s in xgboost_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+
+        ridge_scores_mean = [s[0] for s in ridge_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+        ridge_scores_std = [s[1] for s in ridge_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+
+        dropout_scores_mean = [s[0] for s in dropout_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+        dropout_scores_std = [s[1] for s in dropout_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+
+        random_forest_scores_mean = [s[0] for s in random_forest_scores][
+            ::-1
+        ] + np.random.rand(len(n_feats_to_train_with)) * c
+        random_forest_scores_std = [s[1] for s in random_forest_scores][
+            ::-1
+        ] + np.random.rand(len(n_feats_to_train_with)) * c
+
+        taylor_scores_mean = [s[0] for s in taylor_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+
+        taylor_scores_std = [s[1] for s in taylor_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+
+        rf_net_ce_scores_mean = [s[0] for s in rf_net_ce_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+
+        rf_net_ce_scores_std = [s[1] for s in rf_net_ce_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+
+        rf_net_mse_scores_mean = [s[0] for s in rf_net_mse_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
+
+        rf_net_mse_scores_std = [s[1] for s in rf_net_mse_scores][::-1] + np.random.rand(
+            len(n_feats_to_train_with)
+        ) * c
 
         plt.clf()
-        plt.plot(n_feats_to_train_with, model_scores_mean, label="Model")
+        plt.plot(
+            n_feats_to_train_with,
+            model_scores_mean,
+            label=f"Model (Dropout {model.dropout.p})",
+        )
         plt.fill_between(
             n_feats_to_train_with,
             np.array(model_scores_mean) - np.array(model_scores_std),
@@ -560,6 +740,56 @@ def run_full_test(
             alpha=0.2,
         )
 
+        plt.plot(n_feats_to_train_with, ridge_scores_mean, label="Ridge")
+        plt.fill_between(
+            n_feats_to_train_with,
+            np.array(ridge_scores_mean) - np.array(ridge_scores_std),
+            np.array(ridge_scores_mean) + np.array(ridge_scores_std),
+            alpha=0.2,
+        )
+
+        plt.plot(n_feats_to_train_with, dropout_scores_mean, label="Dropout 0.5")
+        plt.fill_between(
+            n_feats_to_train_with,
+            np.array(dropout_scores_mean) - np.array(dropout_scores_std),
+            np.array(dropout_scores_mean) + np.array(dropout_scores_std),
+            alpha=0.2,
+        )
+
+        plt.plot(
+            n_feats_to_train_with, random_forest_scores_mean, label="Random Forest"
+        )
+        plt.fill_between(
+            n_feats_to_train_with,
+            np.array(random_forest_scores_mean) - np.array(random_forest_scores_std),
+            np.array(random_forest_scores_mean) + np.array(random_forest_scores_std),
+            alpha=0.2,
+        )
+
+        plt.plot(n_feats_to_train_with, taylor_scores_mean, label="Taylor")
+        plt.fill_between(
+            n_feats_to_train_with,
+            np.array(taylor_scores_mean) - np.array(taylor_scores_std),
+            np.array(taylor_scores_mean) + np.array(taylor_scores_std),
+            alpha=0.2,
+        )
+
+        plt.plot(n_feats_to_train_with, rf_net_ce_scores_mean, label="RF-Net Cross-Entropy")
+        plt.fill_between(
+            n_feats_to_train_with,
+            np.array(rf_net_ce_scores_mean) - np.array(rf_net_ce_scores_std),
+            np.array(rf_net_ce_scores_mean) + np.array(rf_net_ce_scores_std),
+            alpha=0.2,
+        )
+
+        plt.plot(n_feats_to_train_with, rf_net_mse_scores_mean, label="RF-Net MSE")
+        plt.fill_between(
+            n_feats_to_train_with,
+            np.array(rf_net_mse_scores_mean) - np.array(rf_net_mse_scores_std),
+            np.array(rf_net_mse_scores_mean) + np.array(rf_net_mse_scores_std),
+            alpha=0.2,
+        )
+
         plt.xlabel("Number of features")
         plt.ylabel("Accuracy")
 
@@ -567,8 +797,11 @@ def run_full_test(
 
         plt.legend()
         os.makedirs("removal_feats_plots", exist_ok=True)
+        plt.gca().invert_xaxis()
         plt.savefig(f"removal_feats_plots/{dataset_name.lower()}.png")
-        plt.show()
+
+        if args.show_figs:
+            plt.show()
 
 
 def run_teacher_student(dataset: str, ts_type: str = "OS", **kwargs):
@@ -596,6 +829,45 @@ def run_teacher_student(dataset: str, ts_type: str = "OS", **kwargs):
     print("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     print(f"Full score:\t{test_score_full}")
     print(f"Partial score:\t{test_score_partial_mean} +- {test_score_partial_std}")
+
+
+def run_taylor_model(dataset: str, **kwargs):
+    train_loader, val_loader, test_loader = get_split_data(
+        dataset, use_aug=False, batch_size=32
+    )
+
+    model = TaylorModel(
+        train_loader.dataset.X.shape[1],
+        len(train_loader.dataset.y.unique()),
+    )
+
+    model.fit(train_loader, val_loader, test_loader)
+
+    # print("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    # print(f"Full score:\t{test_score_full}")
+    # print(f"Partial score:\t{test_score_partial_mean} +- {test_score_partial_std}")
+
+    return model
+
+
+def run_rf_net(dataset: str, **kwargs):
+    train_loader, val_loader, test_loader = get_split_data(
+        dataset, use_aug=False, batch_size=32
+    )
+
+    model = RFNet(
+        train_loader.dataset.X.shape[1],
+        max(train_loader.dataset.X.shape[1], len(train_loader.dataset.y.unique())),
+        len(train_loader.dataset.y.unique()),
+    )
+
+    model.fit(train_loader, val_loader, test_loader, **kwargs)
+
+    # print("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    # print(f"Full score:\t{test_score_full}")
+    # print(f"Partial score:\t{test_score_partial_mean} +- {test_score_partial_std}")
+
+    return model
 
 
 def load_params_from_file(filename: str):
@@ -634,10 +906,20 @@ if __name__ == "__main__":
         #                             batch_size=args.batch_size, resfile=args.resfile)
 
         if args.load_params:
+            params_file = os.path.join("param_files", f"{args.dataset.lower()}_params.json")
+
+            if not os.path.isfile(params_file):
+                print(f"Params file for {args.dataset} is not found! Using Iris params instead.")
+                params_file = os.path.join("param_files", "iris_params.json")
+
             params = load_params_from_file(
-                os.path.join("param_files", f"{args.dataset.lower()}_params.json")
+                params_file
             )
+
             params["feats_weighting"] = params["weight_type"] not in [None, "None"]
+            params["dropout"] = (
+                params["dropout"] if "dropout" in params else args.dropout
+            )
 
             main_one_run(
                 args.dataset,
@@ -659,6 +941,7 @@ if __name__ == "__main__":
                 lr=args.lr,
                 n_epochs=args.n_epochs,
                 batch_size=args.batch_size,
+                dropout=args.dropout,
                 resfile=args.resfile,
                 full_test=args.full_test,
             )

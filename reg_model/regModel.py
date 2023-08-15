@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import torch
 import numpy as np
@@ -13,7 +15,14 @@ from torch.optim import Adam
 
 
 class RegModel(torch.nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, use_layer_norm=False):
+    def __init__(
+        self,
+        input_dim: int,
+        hidden_dim: int,
+        output_dim: int,
+        use_layer_norm: bool = False,
+        dropout: float = 0.0,
+    ):
         super(RegModel, self).__init__()
 
         self.fc1 = torch.nn.Linear(input_dim, hidden_dim)
@@ -22,20 +31,22 @@ class RegModel(torch.nn.Module):
 
         self.relu = torch.nn.ReLU()
         self.softmax = torch.nn.Softmax(dim=1)
-        # self.p = p
 
         if use_layer_norm:
             self.layer_norm = nn.LayerNorm(input_dim)
 
+        self.dropout = nn.Dropout(dropout)
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.to(self.device)
-        # self.double()
 
-    # @staticmethod
-    # def rand_bernoulli(x, p, gamma=100):
-    #     uni_probs = torch.rand(x.shape[1])
-    #     mask = 1 / (1 + torch.exp(-gamma * (uni_probs - p)))
-    #     return mask * x
+        self.alphas = nn.Parameter(torch.zeros(input_dim))
+
+    @staticmethod
+    def rand_bernoulli(x, p, gamma=100):
+        uni_probs = torch.rand(x.shape[1])
+        mask = 1 / (1 + torch.exp(-gamma * (uni_probs - p)))
+        return mask * x
 
     def forward(self, x):
         x = self.fc1(x)
@@ -44,6 +55,7 @@ class RegModel(torch.nn.Module):
             x = self.layer_norm(x)
 
         x = self.relu(x)
+        x = self.dropout(x)
         reconstruction = self.decoder(x)
         output = self.fc2(x)
         output = self.softmax(output)
@@ -86,7 +98,7 @@ class RegModel(torch.nn.Module):
 
         for i in range(X.shape[1]):
             X_partial = deepcopy(X)
-            X_partial[:, i] = 0
+            X_partial[:, i] = self.alphas[i]
             y_pred_partial, _ = self(X_partial)
             y_preds_partial.append(y_pred_partial)
 
@@ -206,28 +218,11 @@ class RegModel(torch.nn.Module):
                 loss = loss_full + alpha * loss_partial
 
                 epoch_loss_full_train.append(loss_full.item())
+                epoch_loss_partial_train.append(loss_partial.item())
                 loss.backward()
                 optimizer.step()
 
                 if feats_weighting:
-                    # if weight_type == "avg":
-                    #     norm_losses = losses_partial / losses_partial.sum()
-                    #     losses_weight_feats = losses_weight_feats + norm_losses
-                    #
-                    # elif weight_type == "mult":
-                    #     losses_weight_feats = (
-                    #         losses_weight_feats.detach() * losses_partial
-                    #     )
-                    #
-                    # elif weight_type == "loss":
-                    #     losses_weight_feats = losses_partial**2
-                    #
-                    # else:
-                    #     raise NotImplementedError
-                    #
-                    # losses_weight_feats = (
-                    #     losses_weight_feats / losses_weight_feats.sum()
-                    # )
                     losses_weight_feats = self.update_feat_weights(
                         losses_weight_feats, losses_partial, weight_type
                     )
@@ -244,36 +239,12 @@ class RegModel(torch.nn.Module):
 
             with torch.no_grad():
                 for i, (X, y) in enumerate(val_loader):
-                    # y_pred_full, _ = self(X)
-                    # loss_full = bce_criterion(y_pred_full, y)
-                    #
-                    # diffs_partial = torch.zeros(X.shape[1])
-                    # reconstruction_partial = torch.zeros(X.shape[1])
-                    #
-                    # for f in range(X.shape[1]):
-                    #     X_f = X.clone()
-                    #     X_f[:, f] = 0
-                    #     y_pred_f, reconstruction_f = self(X_f)
-                    #
-                    #     diffs_partial[f] = diff_criterion(y_pred_f, y_pred_full) * losses_weight_feats[f].item()
-                    #     reconstruction_partial[f] = l2_criterion(reconstruction_f[:, f], X[:, f]) * losses_weight_feats[
-                    #         f].item()
-                    #
-                    # if reg_type == 'max':
-                    #     loss_partial = diffs_partial.max()
-                    #
-                    # else:
-                    #     loss_partial = diffs_partial.mean()
-                    #
-                    # loss_rec = reconstruction_partial.mean()
-
                     loss_full, loss_partial, _ = self.calc_partial_losses(
                         X, y, reg_type, losses_weight_feats
                     )
 
-                    epoch_loss_partial_val.append(loss_partial.item())
-
                     epoch_loss_full_val.append(loss_full.item())
+                    epoch_loss_partial_val.append(loss_partial.item())
 
                 full_loss_val.append(sum(epoch_loss_full_val) / len(val_loader.dataset))
 
@@ -306,6 +277,7 @@ class RegModel(torch.nn.Module):
                 print(f"\tTrain Acc: {train_acc[-1]:.3f}")
                 print(f"\tTest Acc: {val_acc[-1]:.3f}")
 
+        plt.clf()
         plt.plot(
             list(range(1, 1 + len(full_loss_train))),
             full_loss_train,
@@ -334,4 +306,7 @@ class RegModel(torch.nn.Module):
         plt.ylabel("Loss")
         plt.title(f"Partial Loss - {dataset_name}")
         plt.legend()
-        # plt.show
+
+        os.makedirs("loss_plots", exist_ok=True)
+        plt.savefig(f"loss_plots/{dataset_name}.png")
+        # plt.show()

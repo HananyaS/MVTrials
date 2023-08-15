@@ -1,0 +1,10 @@
+python main_experimens.py --dropout 0 --dataset Climate --show_figs False
+python main_experimens.py --dropout 0 --dataset Blood_transfusion --show_figs False
+python main_experimens.py --dropout 0 --dataset Credit_approval --show_figs False
+python main_experimens.py --dropout 0 --dataset A
+nalcatdata_germangss --show_figs False
+python main_experimens.py --dropout 0 --dataset  --show_figs False
+python main_experimens.py --dropout 0 --dataset  --show_figs False
+python main_experimens.py --dropout 0 --dataset  --show_figs False
+python main_experimens.py --dropout 0 --dataset  --show_figs False
+

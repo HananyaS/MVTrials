@@ -1,9 +1,1 @@
-{
-  "reg_type": "l2",
-  "weight_type": "avg",
-  "alpha": 0.5,
-  "use_layer_norm": true,
-  "use_aug": true,
-  "lr": 0.01,
-  "batch_size": 64
-}
+{"reg_type": "var", "weight_type": "avg", "alpha": 0.5, "use_layer_norm": false, "use_aug": true, "lr": 0.01, "batch_size": 64}
