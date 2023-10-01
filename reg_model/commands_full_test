@@ -1,3 +1,4 @@
+#python main_experimens.py --dropout 0 --dataset toy --show_figs False
 python main_experimens.py --dropout 0 --dataset Iris --show_figs False
 python main_experimens.py --dropout 0 --dataset Parkinson --show_figs False
 python main_experimens.py --dropout 0 --dataset Wifi --show_figs False
@@ -6,4 +7,14 @@ python main_experimens.py --dropout 0 --dataset Ecoli --show_figs False
 python main_experimens.py --dropout 0 --dataset Breast --show_figs False
 python main_experimens.py --dropout 0 --dataset Wine --show_figs False
 python main_experimens.py --dropout 0 --dataset Banknote --show_figs False
-
+python main_experimens.py --dropout 0 --dataset Climate --show_figs False
+python main_experimens.py --dropout 0 --dataset Blood_transfusion --show_figs False
+python main_experimens.py --dropout 0 --dataset Credit_approval --show_figs False
+python main_experimens.py --dropout 0 --dataset Analcatdata_germangss --show_figs False
+python main_experimens.py --dropout 0 --dataset Analcatdata_vineyard --show_figs False
+python main_experimens.py --dropout 0 --dataset Arsenic_male_bladder --show_figs False
+python main_experimens.py --dropout 0 --dataset Disclosure_x_bias --show_figs False
+python main_experimens.py --dropout 0 --dataset Tokyo --show_figs False
+python main_experimens.py --dropout 0 --dataset Credit_g --show_figs False
+python main_experimens.py --dropout 0 --dataset Rmftsa_ctoarrivals --show_figs False
+python main_experimens.py --dropout 0 --dataset Diabetes --show_figs False

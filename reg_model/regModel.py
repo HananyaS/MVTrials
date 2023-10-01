@@ -60,17 +60,19 @@ class RegModel(torch.nn.Module):
         output = self.fc2(x)
         output = self.softmax(output)
 
-        return output, reconstruction
+        # return output, reconstruction
+        return output
 
     def predict(self, x):
         with torch.no_grad():
-            return self(x)[0]
+            # return self(x)[0]
+            return self(x)
 
     def score(self, x, y, metric="accuracy"):
         if isinstance(x, pd.DataFrame):
             x = torch.from_numpy(x.values)
 
-        if isinstance(y, pd.DataFrame):
+        if isinstance(y, pd.DataFrame) or isinstance(y, pd.Series):
             y = torch.from_numpy(y.values)
 
         if metric == "accuracy":
@@ -93,13 +95,15 @@ class RegModel(torch.nn.Module):
     ):
         assert reg_type in ["l1", "l2", "max", "var"]
 
-        y_pred_full, _ = self(X)
+        # y_pred_full, _ = self(X)
+        y_pred_full = self(X)
         y_preds_partial = []
 
         for i in range(X.shape[1]):
             X_partial = deepcopy(X)
             X_partial[:, i] = self.alphas[i]
-            y_pred_partial, _ = self(X_partial)
+            # y_pred_partial, _ = self(X_partial)
+            y_pred_partial = self(X_partial)
             y_preds_partial.append(y_pred_partial)
 
         y_preds_partial = torch.stack(y_preds_partial, dim=1)
@@ -164,7 +168,7 @@ class RegModel(torch.nn.Module):
             losses_weight_feats = prev_weights.detach() * losses_partial
 
         elif weight_type == "loss":
-            losses_weight_feats = losses_partial**2
+            losses_weight_feats = losses_partial ** 2
 
         else:
             raise NotImplementedError
